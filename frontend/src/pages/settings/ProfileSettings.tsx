@@ -12,7 +12,8 @@ import {
   Save, 
   Check, 
   Building2, 
-  Code
+  Code,
+  UserPlus
 } from 'lucide-react';
 
 export default function ProfileSettings() {
@@ -33,6 +34,13 @@ export default function ProfileSettings() {
   const [compContactName, setCompContactName] = useState(companyProfile?.contactName || '');
   const [compContactPhone, setCompContactPhone] = useState(companyProfile?.contactPhone || '');
   const [compDescription, setCompDescription] = useState(companyProfile?.description || '');
+
+  // Supervisor creation inputs (for companies)
+  const [supName, setSupName] = useState('');
+  const [supEmail, setSupEmail] = useState('');
+  const [supMsg, setSupMsg] = useState('');
+
+  const { createSupervisorAccount } = useApp();
 
   if (!currentUser) return null;
 
@@ -268,6 +276,43 @@ export default function ProfileSettings() {
             </button>
           </div>
         </form>
+      )}
+
+      {currentUser.role === RoleType.COMPANY && companyProfile && (
+        <div className="mt-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+          <h4 className="font-bold text-sm mb-2">Créer un Maître de stage</h4>
+          <p className="text-xs text-slate-500 mb-3">Générez un compte Maître de stage rattaché à votre entreprise pour superviser les stagiaires.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nom complet</label>
+              <input type="text" className="w-full px-3 py-2 border rounded-lg text-xs" value={supName} onChange={(e) => setSupName(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email professionnel</label>
+              <input type="email" className="w-full px-3 py-2 border rounded-lg text-xs" value={supEmail} onChange={(e) => setSupEmail(e.target.value)} />
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  setSupMsg('');
+                  if (!supName || !supEmail) { setSupMsg('Veuillez saisir nom et email.'); return; }
+                  try {
+                    createSupervisorAccount(supName, supEmail);
+                    setSupMsg('Compte maître de stage créé avec succès.');
+                    setSupName(''); setSupEmail('');
+                    setTimeout(() => setSupMsg(''), 3000);
+                  } catch (e: any) {
+                    setSupMsg(e.message || 'Erreur lors de la création.');
+                  }
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold"
+              >
+                <UserPlus className="h-4 w-4 mr-2 inline" /> Créer
+              </button>
+              <span className="text-xs text-slate-500 self-center">{supMsg}</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

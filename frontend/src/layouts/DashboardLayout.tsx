@@ -42,19 +42,19 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       id: 'dashboard',
       name: 'Tableau de bord',
       icon: LayoutDashboard,
-      rolesAllowed: [RoleType.ADMIN, RoleType.STUDENT, RoleType.COMPANY]
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR, RoleType.STUDENT, RoleType.COMPANY]
     },
     {
       id: 'internships',
       name: 'Offres de stages',
       icon: Briefcase,
-      rolesAllowed: [RoleType.ADMIN, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
     },
     {
       id: 'partners',
       name: 'Entreprises Partenaires',
       icon: Building2,
-      rolesAllowed: [RoleType.ADMIN, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
     },
     {
       id: 'applications',
@@ -66,13 +66,13 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       id: 'users',
       name: 'Utilisateurs',
       icon: Users,
-      rolesAllowed: [RoleType.ADMIN]
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR]
     },
     {
       id: 'reports',
       name: 'Rapports & Stats',
       icon: CalendarClock,
-      rolesAllowed: [RoleType.ADMIN, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR, RoleType.COMPANY] // 👈 Retiré RoleType.STUDENT pour le cacher à l'étudiant
     },
     {
       id: 'profile',
@@ -84,7 +84,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       id: 'system-logs',
       name: 'Logs d\'audit',
       icon: ShieldAlert,
-      rolesAllowed: [RoleType.ADMIN]
+      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR]
     }
   ];
 
@@ -121,6 +121,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
             <div className="flex items-center mt-0.5">
               <span className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-md border uppercase tracking-wider ${
                 currentUser.role === RoleType.ADMIN ? 'bg-red-950/60 border-red-500/20 text-red-400' :
+                currentUser.role === RoleType.SUPERVISOR ? 'bg-amber-950/60 border-amber-500/20 text-amber-400' :
                 currentUser.role === RoleType.COMPANY ? 'bg-blue-950/60 border-blue-500/20 text-blue-400' :
                 'bg-emerald-950/60 border-emerald-500/20 text-emerald-400'
               }`}>

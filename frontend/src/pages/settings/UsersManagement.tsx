@@ -103,7 +103,7 @@ export default function UsersManagement() {
             className="w-full px-3 py-2 bg-slate-50 border border-slate-220 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 font-medium text-xs"
           >
             <option value="all">Tous les rôles</option>
-            <option value={RoleType.ADMIN}>Administrateurs</option>
+            <option value={RoleType.SUPERVISOR}>Maîtres de stage (Superviseurs)</option>
             <option value={RoleType.STUDENT}>Étudiants</option>
             <option value={RoleType.COMPANY}>Entreprises</option>
           </select>
@@ -159,7 +159,7 @@ export default function UsersManagement() {
               >
                 <option value={RoleType.STUDENT}>Étudiant universitaire</option>
                 <option value={RoleType.COMPANY}>Entreprise Partenaire</option>
-                <option value={RoleType.ADMIN}>Administrateur système</option>
+                <option value={RoleType.SUPERVISOR}>Maître de stage (Superviseur)</option>
               </select>
             </div>
 
@@ -208,7 +208,7 @@ export default function UsersManagement() {
                   </td>
                   <td className="p-4 md:p-5">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      user.role === RoleType.ADMIN ? 'bg-red-100 text-red-800' :
+                      user.role === RoleType.SUPERVISOR ? 'bg-amber-100 text-amber-800' :
                       user.role === RoleType.COMPANY ? 'bg-emerald-100 text-emerald-800' :
                       'bg-blue-105 text-blue-900 bg-blue-100'
                     }`}>
@@ -229,9 +229,9 @@ export default function UsersManagement() {
                     {user.status === 'active' ? (
                       <button
                         onClick={() => suspendUser(user.id)}
-                        disabled={user.role === RoleType.ADMIN}
+                        disabled={user.role === RoleType.SUPERVISOR}
                         className={`text-[11px] font-bold border rounded-lg px-3 py-1.5 transition-colors border-red-200 ${
-                          user.role === RoleType.ADMIN 
+                          user.role === RoleType.SUPERVISOR 
                             ? 'text-slate-300 border-slate-100 cursor-not-allowed' 
                             : 'text-red-600 hover:bg-red-500 hover:text-white cursor-pointer'
                         }`}

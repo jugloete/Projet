@@ -21,7 +21,8 @@
     },
     "baseUrl": ".",
     "allowImportingTsExtensions": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
     "noEmit": true
   }
 }

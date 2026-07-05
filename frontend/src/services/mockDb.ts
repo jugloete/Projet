@@ -26,12 +26,13 @@ const ACCEPTANCE_KEY = 'internship_student_acceptance';
 
 const INITIAL_USERS: User[] = [
   {
-    id: 'user-admin-1',
-    name: 'Jean Renaud (Admin)',
-    email: 'admin@internship.com',
-    role: RoleType.ADMIN,
+    id: 'user-supervisor-demo-1',
+    name: 'M. Christian Kabange (Superviseur démo)',
+    email: 'supervisor.demo@gecamines.cd',
+    role: RoleType.SUPERVISOR,
     status: 'active',
-    createdAt: '2026-01-10T09:00:00Z'
+    createdAt: '2026-06-01T09:00:00Z',
+    companyId: 'company-profile-1'
   },
   {
     id: 'user-student-1',

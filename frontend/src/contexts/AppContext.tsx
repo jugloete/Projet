@@ -233,8 +233,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       };
       mockDb.saveCompanies([...allComp, newComp]);
 
-      // Notify admin
-      const admins = updatedUsers.filter(u => u.role === RoleType.ADMIN);
+      // Notify admin and supervisors
+      const admins = updatedUsers.filter(u => u.role === RoleType.ADMIN || u.role === RoleType.SUPERVISOR);
       admins.forEach(admin => {
         mockDb.addNotification(admin.id, 'Nouvelle entreprise inscrite', `L'entreprise "${name}" s'est inscrite sur la plateforme.`);
       });
@@ -284,12 +284,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     mockDb.saveInternships([newInternship, ...allInternships]);
 
-    // Audit and Admin Notif
+    // Audit and Admin/Supervisor Notif
     mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_CREEE', `Création d'offre de stage: ${newInternship.title}`);
     
     // Notify Admin users
     const allUsers = mockDb.getUsers();
-    const admins = allUsers.filter(u => u.role === RoleType.ADMIN);
+    const admins = allUsers.filter(u => u.role === RoleType.ADMIN || u.role === RoleType.SUPERVISOR);
     admins.forEach(admin => {
       mockDb.addNotification(
         admin.id, 
@@ -311,7 +311,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const validateInternship = (id: string, action: 'published' | 'rejected') => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
     const allInternships = mockDb.getInternships();
     const internship = allInternships.find(i => i.id === id);
     if (!internship) return;
@@ -434,7 +434,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const suspendUser = (id: string) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
     const allUsers = mockDb.getUsers();
     const updated = allUsers.map(u => u.id === id ? { ...u, status: 'suspended' as const } : u);
     mockDb.saveUsers(updated);
@@ -443,7 +443,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const reactivateUser = (id: string) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
     const allUsers = mockDb.getUsers();
     const updated = allUsers.map(u => u.id === id ? { ...u, status: 'active' as const } : u);
     mockDb.saveUsers(updated);
@@ -452,7 +452,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const createUserByAdmin = (userData: Omit<User, 'id' | 'createdAt'>) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
     const allUsers = mockDb.getUsers();
     if (allUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase())) {
       throw new Error('Cet email est déjà pris.');
@@ -645,15 +645,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // On utilise un transtypage ou une valeur brute pour accepter le nouveau rôle de manière flexible
-    const newSupervisor: any = {
+    const newSupervisor: User = {
       id: `user-sup-${Date.now()}`,
-      name: name,
-      email: email,
-      role: 'SUPERVISOR', 
+      name,
+      email,
+      role: RoleType.SUPERVISOR,
       status: 'active',
-      companyId: companyProfile.id, 
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      companyId: companyProfile.id
     };
 
     mockDb.saveUsers([...allUsers, newSupervisor]);

@@ -31,8 +31,7 @@ export default function LoginRegister() {
   const [regRole, setRegRole] = useState<RoleType>(RoleType.STUDENT);
   const [regPassword, setRegPassword] = useState('');
 
-  // Admin specific registration key
-  const [adminSecretKey, setAdminSecretKey] = useState('');
+  // Admin specific registration key (removed - admin signup disabled)
 
   // Student/Company metadata
   const [studPhone, setStudPhone] = useState('');
@@ -77,12 +76,10 @@ export default function LoginRegister() {
       return;
     }
 
-    // Sécurité : Validation de la clé secrète pour la création d'un compte admin
+    // Admin signup is disabled; registration only supports Student and Company.
     if (regRole === RoleType.ADMIN) {
-      if (adminSecretKey !== 'UPL-ADMIN-2026') {
-        setErrorMsg("La clé d'autorisation Administrateur est incorrecte.");
-        return;
-      }
+      setErrorMsg("La création de comptes administrateur via l'interface publique est désactivée.");
+      return;
     }
 
     try {
@@ -96,15 +93,12 @@ export default function LoginRegister() {
         details.address = compAddress;
         details.description = compDesc;
         details.phone = studPhone; 
-      } else if (regRole === RoleType.ADMIN) {
-        // Métadonnées de base optionnelles ou vides pour l'administrateur
-        details.phone = studPhone;
       }
 
       await register(regName, regEmail, regRole, regPassword, details);
       setSuccessMsg('Compte créé avec succès ! Connectez-vous maintenant.');
       setIsSignUp(false);
-      setAdminSecretKey('');
+      
     } catch (err: any) {
       setErrorMsg(err.message || "Une erreur s'est produite lors de l'inscription.");
     }
@@ -269,18 +263,7 @@ export default function LoginRegister() {
                     <Building2 className="h-3.5 w-3.5" />
                     <span>Entreprise</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setRegRole(RoleType.ADMIN)}
-                    className={`p-2 border rounded-lg flex items-center justify-center space-x-1.5 text-xs font-bold transition-all cursor-pointer ${
-                      regRole === RoleType.ADMIN 
-                        ? 'bg-amber-950/40 border-amber-500/50 text-amber-400 shadow-md' 
-                        : 'bg-[#0b0f19] text-slate-400 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <UserCheck className="h-3.5 w-3.5" />
-                    <span>Admin</span>
-                  </button>
+                  {/* Admin registration removed; supervisors are created by companies from their dashboard. */}
                 </div>
               </div>
 
@@ -393,20 +376,6 @@ export default function LoginRegister() {
               {regRole === RoleType.ADMIN && (
                 <div className="space-y-3 animate-fade-in">
                   <div>
-                    <label className="flex items-center space-x-1 text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-1">
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                      <span>Clé d'autorisation Administrateur</span>
-                    </label>
-                    <input
-                      type="password"
-                      className="w-full px-3 py-2 bg-[#0b0f19] border border-amber-500/30 rounded-lg text-xs text-slate-200 outline-hidden focus:border-amber-500 transition-all placeholder-slate-600 font-mono"
-                      placeholder="Entrez le code d'activation de l'UPL"
-                      value={adminSecretKey}
-                      onChange={(e) => setAdminSecretKey(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-1">Téléphone de contact</label>
                     <input
                       type="text"
@@ -470,15 +439,15 @@ export default function LoginRegister() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSignInRole(RoleType.ADMIN)}
+                    onClick={() => setSignInRole(RoleType.SUPERVISOR)}
                     className={`py-2 px-1 border rounded-lg flex flex-col items-center justify-center font-bold tracking-tight transition-all cursor-pointer ${
-                      signInRole === RoleType.ADMIN 
+                      signInRole === RoleType.SUPERVISOR 
                         ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 shadow-md' 
                         : 'bg-[#0b0f19] text-slate-400 border-slate-800/80 hover:border-slate-700'
                     }`}
                   >
                     <UserCheck className="h-3.5 w-3.5 mb-0.5" />
-                    <span>Admin</span>
+                    <span>Maître de stage</span>
                   </button>
                 </div>
               </div>
