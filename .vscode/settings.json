@@ -1,0 +1,6 @@
+{
+  // Use the workspace TypeScript version (node_modules) to avoid editor warnings
+  "typescript.tsdk": "node_modules/typescript/lib",
+  // Prompt to use the workspace TypeScript when available
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
