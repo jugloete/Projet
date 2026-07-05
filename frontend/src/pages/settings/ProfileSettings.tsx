@@ -193,13 +193,13 @@ export default function ProfileSettings() {
           {/* Logo & identity teaser */}
           <div className="flex items-center space-x-4 p-4 bg-slate-50/50 rounded-xl border">
             <img 
-              src={companyProfile.logoUrl} 
-              alt={currentUser.name} 
+              src={companyProfile?.logoUrl || `https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=150&q=80`} 
+              alt={companyProfile?.name || currentUser.name} 
               className="h-16 w-16 rounded-xl object-cover ring-4 ring-slate-100 border bg-white"
             />
             <div>
-              <h3 className="font-extrabold text-slate-800 text-sm md:text-base">{currentUser.name}</h3>
-              <p className="text-xs text-slate-450 mt-0.5">{currentUser.email}</p>
+              <h3 className="font-extrabold text-slate-800 text-sm md:text-base">{companyProfile?.name || currentUser.name}</h3>
+              <p className="text-xs text-slate-450 mt-0.5">{companyProfile?.email || currentUser.email}</p>
             </div>
           </div>
 
