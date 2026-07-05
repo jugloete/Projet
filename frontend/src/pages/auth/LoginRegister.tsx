@@ -263,7 +263,7 @@ export default function LoginRegister() {
                     <Building2 className="h-3.5 w-3.5" />
                     <span>Entreprise</span>
                   </button>
-                  {/* Admin registration removed; supervisors are created by companies from their dashboard. */}
+                  {/* Only Student and Company registrations allowed. */}
                 </div>
               </div>
 
@@ -437,18 +437,7 @@ export default function LoginRegister() {
                     <Building2 className="h-3.5 w-3.5 mb-0.5" />
                     <span>Entreprise</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSignInRole(RoleType.SUPERVISOR)}
-                    className={`py-2 px-1 border rounded-lg flex flex-col items-center justify-center font-bold tracking-tight transition-all cursor-pointer ${
-                      signInRole === RoleType.SUPERVISOR 
-                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 shadow-md' 
-                        : 'bg-[#0b0f19] text-slate-400 border-slate-800/80 hover:border-slate-700'
-                    }`}
-                  >
-                    <UserCheck className="h-3.5 w-3.5 mb-0.5" />
-                    <span>Maître de stage</span>
-                  </button>
+                    {/* Supervisor login option removed: supervisors are created by companies and do not appear as a public role on the login page. */}
                 </div>
               </div>
 

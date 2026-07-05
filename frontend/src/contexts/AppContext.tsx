@@ -154,8 +154,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, role: RoleType): Promise<boolean> => {
     const allUsers = mockDb.getUsers();
-    const user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.role === role);
-    
+    // First try exact match with provided role (normal case), otherwise allow login by email alone
+    let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.role === role);
+    if (!user) {
+      user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    }
+
     if (user) {
       if (user.status === 'suspended') {
         throw new Error('Votre compte est suspendu. Veuillez contacter un administrateur.');
