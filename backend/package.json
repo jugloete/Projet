@@ -1,0 +1,22 @@
+{
+  "name": "internship-platform-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API Express connectée à MongoDB pour Internship Platform",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
+    "mongoose": "^8.17.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {}
+}

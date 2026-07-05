@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #090d16;
+    color: #f1f5f9; /* slate-100 */
+    font-family: system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 🛠️ FIX GLOBAL : Force le texte des champs à être sombre et lisible sur fond blanc */
+  input, textarea, select {
+    color: #0f172a; /* text-slate-900 */
+  }
+
+  /* Style optionnel pour que les textes indicatifs (placeholders) se voient bien */
+  input::placeholder, textarea::placeholder {
+    color: #94a3b8; /* text-slate-400 */
+  }
+
+  /* Personnalisation moderne des barres de défilement */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #090d16;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+  }
+}
