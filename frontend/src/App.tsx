@@ -10,7 +10,9 @@ import ProfileSettings from './pages/settings/ProfileSettings';
 import ReportsPage from './pages/reports/ReportsPage';
 import SystemLogs from './pages/settings/SystemLogs';
 import PartnersPage from './pages/partners/PartnersPage';
+import CompanySupervisors from './pages/settings/CompanySupervisors';
 import { CheckCircle, AlertOctagon, Info, X } from 'lucide-react';
+
 
 function ToastContainer() {
   const { toasts, removeToast } = useApp();
@@ -111,6 +113,8 @@ function MainAppContent() {
         return <UsersManagement />;
       case 'reports':
         return <ReportsPage />;
+      case 'supervisors':
+        return <CompanySupervisors />;
       case 'profile':
         return <ProfileSettings />;
       case 'system-logs':
@@ -119,6 +123,7 @@ function MainAppContent() {
         return <Dashboard onViewChange={setCurrentView} />;
     }
   };
+
 
   return (
     <div className="bg-[#090d16] min-h-screen w-full text-slate-100 antialiased font-sans">
