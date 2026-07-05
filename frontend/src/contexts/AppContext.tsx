@@ -44,6 +44,7 @@ interface AppContextType {
   register: (name: string, email: string, role: RoleType, details?: any) => Promise<boolean>;
   updateStudentProfile: (profile: Partial<StudentProfile>) => void;
   updateCompanyProfile: (profile: Partial<CompanyProfile>) => void;
+  assignStudentToSupervisor: (supervisorId: string, studentId?: string) => void;
   createInternship: (internship: Omit<Internship, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'status' | 'createdAt'>) => void;
   updateInternship: (id: string, internship: Partial<Internship>) => void;
   validateInternship: (id: string, action: 'published' | 'rejected') => void;
@@ -261,6 +262,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     mockDb.saveStudents(updated);
     setStudentProfile({ ...studentProfile, ...update });
     mockDb.addAuditLog(currentUser!.id, currentUser!.name, 'PROFIL_MAJ', 'Mise à jour du profil étudiant');
+    loadAllData(true);
+  };
+
+  const assignStudentToSupervisor = (supervisorId: string, studentId?: string) => {
+    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) {
+      showToast("Action non autorisée. Seuls les administrateurs et superviseurs peuvent affecter des étudiants.", "error");
+      return;
+    }
+
+    const allStudents = mockDb.getStudents();
+    const targetStudent = allStudents.find(s => s.id === studentId);
+    if (studentId && !targetStudent) {
+      showToast("Étudiant introuvable.", "error");
+      return;
+    }
+
+    const updatedStudents = allStudents.map(student => {
+      if (studentId && student.id === studentId) {
+        return { ...student, supervisorId };
+      }
+      if (student.supervisorId === supervisorId && student.id !== studentId) {
+        return { ...student, supervisorId: undefined };
+      }
+      return student;
+    });
+
+    mockDb.saveStudents(updatedStudents);
+    const supervisor = mockDb.getUsers().find(u => u.id === supervisorId);
+    const studentName = targetStudent ? targetStudent.name : 'aucun étudiant';
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'AFFECTATION_ETUDIANT', `Affectation de ${studentName} au maître de stage ${supervisor?.name || supervisorId}`);
+    showToast(`Étudiant ${studentName !== 'aucun étudiant' ? `assigné à ${supervisor?.name}` : 'désassigné'} !`, "success");
     loadAllData(true);
   };
 
@@ -727,7 +759,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addPartnerCompanyByAdmin,
       updatePartnerCompanyByAdmin,
       deletePartnerCompanyByAdmin,
-      createSupervisorAccount // Enregistré et prêt à servir
+      createSupervisorAccount,
+      assignStudentToSupervisor // Superviseur peut gérer les affectations
     }}>
       {children}
     </AppContext.Provider>

@@ -29,6 +29,7 @@ export interface StudentProfile {
   skills: string[];
   education: string;
   favoriteInternships: string[]; // internship IDs
+  supervisorId?: string; // Identifiant du maître de stage affecté
 }
 
 export interface CompanyProfile {

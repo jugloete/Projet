@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export default function UsersManagement() {
-  const { users, suspendUser, reactivateUser, createUserByAdmin } = useApp();
+  const { users, students, suspendUser, reactivateUser, createUserByAdmin, assignStudentToSupervisor } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -27,6 +27,8 @@ export default function UsersManagement() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<RoleType>(RoleType.STUDENT);
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,6 +254,78 @@ export default function UsersManagement() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="bg-white border rounded-xl border-slate-205 shadow-xs p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-extrabold text-slate-900 text-sm">Affecter un étudiant à un maître de stage</h3>
+            <p className="text-xs text-slate-500">Sélectionnez un superviseur et un étudiant pour effectuer l'affectation.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Maître de stage</label>
+            <select
+              className="w-full px-3 py-2 border rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 text-xs"
+              value={selectedSupervisorId}
+              onChange={(e) => setSelectedSupervisorId(e.target.value)}
+            >
+              <option value="">-- Aucun --</option>
+              {users.filter(u => u.role === RoleType.SUPERVISOR).map(sup => (
+                <option key={sup.id} value={sup.id}>{sup.name} ({sup.email})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Étudiant</label>
+            <select
+              className="w-full px-3 py-2 border rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 text-xs"
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+            >
+              <option value="">-- Aucun --</option>
+              {students.map(student => (
+                <option key={student.id} value={student.id}>{student.name} ({student.email})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => {
+              setSelectedSupervisorId('');
+              setSelectedStudentId('');
+              setErrorMsg('');
+              setSuccessMsg('');
+            }}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium"
+          >
+            Réinitialiser
+          </button>
+          <button
+            onClick={() => {
+              setErrorMsg('');
+              setSuccessMsg('');
+              if (!selectedSupervisorId || !selectedStudentId) {
+                setErrorMsg('Sélectionnez un maître de stage et un étudiant pour affecter.');
+                return;
+              }
+              assignStudentToSupervisor(selectedSupervisorId, selectedStudentId);
+              setSuccessMsg('Étudiant affecté au maître de stage avec succès !');
+              setSelectedSupervisorId('');
+              setSelectedStudentId('');
+            }}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-xs"
+          >
+            Affecter l'étudiant
+          </button>
+        </div>
+
+        {errorMsg && <p className="text-red-600 font-semibold text-xs">{errorMsg}</p>}
+        {successMsg && <p className="text-emerald-600 font-semibold text-xs">{successMsg}</p>}
       </div>
     </div>
   );
