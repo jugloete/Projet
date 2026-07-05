@@ -188,7 +188,7 @@ export default function ProfileSettings() {
         </form>
       )}
 
-      {currentUser.role === RoleType.COMPANY && companyProfile && (
+      {currentUser.role === RoleType.COMPANY && (
         <form onSubmit={handleCompanySave} className="space-y-5">
           {/* Logo & identity teaser */}
           <div className="flex items-center space-x-4 p-4 bg-slate-50/50 rounded-xl border">
@@ -278,7 +278,7 @@ export default function ProfileSettings() {
         </form>
       )}
 
-      {currentUser.role === RoleType.COMPANY && companyProfile && (
+      {currentUser.role === RoleType.COMPANY && (
         <div className="mt-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
           <h4 className="font-bold text-sm mb-2">Créer un Maître de stage</h4>
           <p className="text-xs text-slate-500 mb-3">Générez un compte Maître de stage rattaché à votre entreprise pour superviser les stagiaires.</p>

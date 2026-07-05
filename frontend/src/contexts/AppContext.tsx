@@ -265,8 +265,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateCompanyProfile = (update: Partial<CompanyProfile>) => {
-    if (!companyProfile) return;
     const allComp = mockDb.getCompanies();
+    if (!companyProfile) {
+      // Create a new company profile linked to the current user
+      const newComp: CompanyProfile = {
+        id: `company-${Date.now()}`,
+        userId: currentUser!.id,
+        name: currentUser!.name,
+        email: currentUser!.email,
+        logoUrl: `https://images.unsplash.com/photo-${1600000000000 + Math.floor(Math.random() * 900000)}?auto=format&fit=crop&w=150&q=80`,
+        sector: update.sector || 'Non spécifié',
+        address: update.address || '',
+        contactName: update.contactName || currentUser!.name,
+        contactEmail: update.contactEmail || currentUser!.email,
+        contactPhone: update.contactPhone || '',
+        description: update.description || ''
+      };
+      mockDb.saveCompanies([newComp, ...allComp]);
+      setCompanyProfile(newComp);
+      mockDb.addAuditLog(currentUser!.id, currentUser!.name, 'PROFIL_CREATION', 'Création du profil entreprise');
+      loadAllData(true);
+      return;
+    }
+
     const updated = allComp.map(c => c.id === companyProfile.id ? { ...c, ...update } : c);
     mockDb.saveCompanies(updated);
     setCompanyProfile({ ...companyProfile, ...update });
