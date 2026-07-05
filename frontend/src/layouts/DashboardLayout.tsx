@@ -66,7 +66,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       id: 'users',
       name: 'Utilisateurs',
       icon: Users,
-      rolesAllowed: [RoleType.ADMIN, RoleType.SUPERVISOR]
+      rolesAllowed: [RoleType.ADMIN]
     },
     {
       id: 'reports',
@@ -78,7 +78,13 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       id: 'profile',
       name: 'Mon Profil',
       icon: User,
-      rolesAllowed: [RoleType.STUDENT, RoleType.COMPANY] // Accès maintenu pour le profil
+      rolesAllowed: [RoleType.STUDENT, RoleType.COMPANY, RoleType.SUPERVISOR] // Accès maintenu pour le profil et les superviseurs
+    },
+    {
+      id: 'supervisors',
+      name: 'Superviseurs',
+      icon: Users,
+      rolesAllowed: [RoleType.COMPANY]
     },
     {
       id: 'system-logs',
