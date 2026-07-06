@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { User, RoleType } from '@/types';
+import { User, RoleType } from '../../types';
 import { X, ArrowLeft } from 'lucide-react';
-import ReportsPage from '@/pages/reports/ReportsPage';
+import ReportsPage from '../../pages/reports/ReportsPage';
 
 export default function CompanySupervisors() {
   const { users, students, dailyReports, studentGrades, companyProfile } = useApp();
