@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '@/contexts/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { User, RoleType } from '@/types';
 import { X, ArrowLeft } from 'lucide-react';
 import ReportsPage from '@/pages/reports/ReportsPage';
