@@ -66,6 +66,7 @@ export default function LoginRegister() {
       ? applications.find((application) => application.studentEmail.toLowerCase() === trackedStudentEmail)
       : undefined;
   const trackedStatus = trackedStudent?.status || trackedApplication?.status;
+  const trackedCompanyName = trackedApplication?.companyName || trackedStudent?.companyName || selectedCompany?.name || 'l entreprise choisie';
 
   const resetMessages = () => {
     setErrorMsg('');
@@ -143,7 +144,7 @@ export default function LoginRegister() {
         coverLetter,
         education: [faculty, level, field].filter(Boolean).join(' - ')
       });
-      const message = 'Demande envoyee. Votre compte reste en attente jusqu a validation par l entreprise.';
+      const message = `Demande envoyee a ${selectedCompany.name}. Votre compte reste en attente jusqu a validation par cette entreprise.`;
       setSuccessMsg(message);
       setStudentStatusEmail(regEmail);
       localStorage.setItem('public_student_email', regEmail);
@@ -230,7 +231,7 @@ export default function LoginRegister() {
             <div className="min-w-0 flex-1">
               <span className="block text-sm font-black text-emerald-100">Votre demande a ete acceptee.</span>
               <p className="mt-1 text-xs leading-5 text-emerald-50">
-                Votre demande de stage a ete acceptee. Votre compte est maintenant active et pret a etre utilise. Vous pouvez vous connecter pour acceder a votre espace etudiant.
+                {trackedCompanyName} a accepte votre demande de stage. Votre compte est maintenant active et pret a etre utilise. Vous pouvez vous connecter pour acceder a votre espace etudiant.
               </p>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
                 <input
@@ -262,7 +263,7 @@ export default function LoginRegister() {
             <div>
               <span className="block text-sm font-black text-red-100">Votre demande a ete refusee.</span>
               <p className="mt-1 text-xs leading-5 text-red-50">
-                Votre demande de stage n a pas ete retenue par l entreprise. Votre compte sera supprime automatiquement dans un delai de 24 heures. Vos informations resteront archivees.
+                {trackedCompanyName} a refuse votre demande de stage. Votre compte sera supprime automatiquement dans un delai de 24 heures. Vos informations resteront archivees.
               </p>
             </div>
           </div>
@@ -276,9 +277,9 @@ export default function LoginRegister() {
           <div className="flex items-start gap-3">
             <Hourglass className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
             <div>
-              <span className="block text-sm font-black text-amber-100">Votre demande est en cours d examen par l entreprise.</span>
+              <span className="block text-sm font-black text-amber-100">Votre demande est en cours d examen par {trackedCompanyName}.</span>
               <p className="mt-1 text-xs leading-5 text-amber-50">
-                Aucun acces etudiant n est ouvert tant que l entreprise n a pas valide votre compte.
+                Aucun acces etudiant n est ouvert tant que {trackedCompanyName} n a pas valide votre compte.
               </p>
             </div>
           </div>

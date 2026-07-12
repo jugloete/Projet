@@ -13,7 +13,6 @@ import {
   Check, 
   Building2, 
   Code,
-  UserPlus,
   Camera
 } from 'lucide-react';
 
@@ -89,13 +88,9 @@ export default function ProfileSettings() {
   const [compRequiredSkills, setCompRequiredSkills] = useState(companyProfile?.requiredSkills?.join(', ') || '');
   const [compSpecialties, setCompSpecialties] = useState(companyProfile?.acceptedSpecialties?.join(', ') || '');
   const [compEligibilityCriteria, setCompEligibilityCriteria] = useState(companyProfile?.eligibilityCriteria || '');
-
-  // Supervisor creation inputs (for companies)
-  const [supName, setSupName] = useState('');
-  const [supEmail, setSupEmail] = useState('');
-  const [supMsg, setSupMsg] = useState('');
-
-  const { createSupervisorAccount } = useApp();
+  const [compLogoUrl, setCompLogoUrl] = useState(companyProfile?.logoUrl || '');
+  const [logoLoading, setLogoLoading] = useState(false);
+  const [logoError, setLogoError] = useState('');
 
   if (!currentUser) return null;
 
@@ -128,6 +123,38 @@ export default function ProfileSettings() {
       setSavingMsg('');
     } finally {
       setAvatarLoading(false);
+    }
+  };
+
+  const handleCompanyLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!PROFILE_PHOTO_TYPES.includes(file.type)) {
+      setLogoError('Choisissez une image JPG, PNG ou WebP.');
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_PHOTO_SIZE) {
+      setLogoError('La photo ne peut pas depasser 5 Mo.');
+      return;
+    }
+
+    setLogoLoading(true);
+    setLogoError('');
+    setSavingMsg('Enregistrement de la photo...');
+    try {
+      const logoUrl = await prepareProfilePhoto(file);
+      updateCompanyProfile({ logoUrl });
+      setCompLogoUrl(logoUrl);
+      setSavingMsg('Photo enregistree avec succes !');
+      setTimeout(() => setSavingMsg(''), 2000);
+    } catch (error) {
+      setLogoError(error instanceof Error ? error.message : 'Impossible de modifier la photo.');
+      setSavingMsg('');
+    } finally {
+      setLogoLoading(false);
     }
   };
 
@@ -172,7 +199,8 @@ export default function ProfileSettings() {
           })),
         requiredSkills: compRequiredSkills.split(',').map((skill) => skill.trim()).filter(Boolean),
         acceptedSpecialties: compSpecialties.split(',').map((specialty) => specialty.trim()).filter(Boolean),
-        eligibilityCriteria: compEligibilityCriteria
+        eligibilityCriteria: compEligibilityCriteria,
+        logoUrl: compLogoUrl || companyProfile?.logoUrl
       });
       setSavingMsg('✓ Informations enregistrées avec succès !');
       setTimeout(() => setSavingMsg(''), 2000);
@@ -310,15 +338,35 @@ export default function ProfileSettings() {
       {currentUser.role === RoleType.COMPANY && (
         <form onSubmit={handleCompanySave} className="space-y-5">
           {/* Logo & identity teaser */}
-          <div className="flex items-center space-x-4 p-4 bg-slate-50/50 rounded-xl border">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-slate-50/50 rounded-xl border">
             <img 
-              src={companyProfile?.logoUrl || `https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=150&q=80`} 
+              src={compLogoUrl || companyProfile?.logoUrl || `https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=150&q=80`} 
               alt={companyProfile?.name || currentUser.name} 
               className="h-16 w-16 rounded-xl object-cover ring-4 ring-slate-100 border bg-white"
             />
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-extrabold text-slate-800 text-sm md:text-base">{companyProfile?.name || currentUser.name}</h3>
               <p className="text-xs text-slate-450 mt-0.5">{companyProfile?.email || currentUser.email}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <label
+                  htmlFor="company-profile-photo"
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-700 transition-colors ${
+                    logoLoading ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-slate-100'
+                  }`}
+                >
+                  <Camera className="h-4 w-4" />
+                  <span>{logoLoading ? 'Traitement...' : 'Modifier la photo'}</span>
+                </label>
+                <input
+                  id="company-profile-photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={logoLoading}
+                  onChange={handleCompanyLogoChange}
+                />
+              </div>
+              {logoError && <p className="mt-2 text-xs font-medium text-rose-600">{logoError}</p>}
             </div>
           </div>
 
@@ -438,43 +486,6 @@ export default function ProfileSettings() {
             </button>
           </div>
         </form>
-      )}
-
-      {currentUser.role === RoleType.COMPANY && (
-        <div className="mt-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-          <h4 className="font-bold text-sm mb-2">Créer un Maître de stage</h4>
-          <p className="text-xs text-slate-500 mb-3">Générez un compte Maître de stage rattaché à votre entreprise pour superviser les stagiaires.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nom complet</label>
-              <input type="text" className="w-full px-3 py-2 border rounded-lg text-xs" value={supName} onChange={(e) => setSupName(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email professionnel</label>
-              <input type="email" className="w-full px-3 py-2 border rounded-lg text-xs" value={supEmail} onChange={(e) => setSupEmail(e.target.value)} />
-            </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => {
-                  setSupMsg('');
-                  if (!supName || !supEmail) { setSupMsg('Veuillez saisir nom et email.'); return; }
-                  try {
-                    createSupervisorAccount(supName, supEmail);
-                    setSupMsg('Compte maître de stage créé avec succès.');
-                    setSupName(''); setSupEmail('');
-                    setTimeout(() => setSupMsg(''), 3000);
-                  } catch (e: any) {
-                    setSupMsg(e.message || 'Erreur lors de la création.');
-                  }
-                }}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold"
-              >
-                <UserPlus className="h-4 w-4 mr-2 inline" /> Créer
-              </button>
-              <span className="text-xs text-slate-500 self-center">{supMsg}</span>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

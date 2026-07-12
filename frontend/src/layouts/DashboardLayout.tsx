@@ -32,7 +32,7 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ currentView, onViewChange, children }: DashboardLayoutProps) {
-  const { currentUser, studentProfile, logout, notifications, markNotificationAsRead } = useApp();
+  const { currentUser, studentProfile, companyProfile, logout, notifications, markNotificationAsRead } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
 
@@ -103,7 +103,11 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
 
   const filteredItems = sidebarItems.filter(item => item.rolesAllowed.includes(currentUser.role));
   const unreadNotifications = notifications.filter(n => n.userId === currentUser.id && !n.read);
-  const profilePhotoUrl = currentUser.role === RoleType.STUDENT ? studentProfile?.avatarUrl : undefined;
+  const profilePhotoUrl = currentUser.role === RoleType.STUDENT
+    ? studentProfile?.avatarUrl
+    : currentUser.role === RoleType.COMPANY
+      ? companyProfile?.logoUrl
+      : undefined;
 
   return (
     <div className="min-h-screen flex text-slate-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">

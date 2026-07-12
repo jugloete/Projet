@@ -194,12 +194,20 @@ export default function ApplicationsList() {
                 {expanded && (
                   <div className="space-y-5 border-t border-slate-100 bg-slate-50/60 p-6 text-xs md:text-sm">
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <InfoTile label="Entreprise visee" value={app.companyName} />
                       <InfoTile label="Departement" value={app.departmentName || 'Non precise'} />
                       <InfoTile label="Specialite" value={app.specialty || 'Non precisee'} />
                       <InfoTile label="Superviseur" value={supervisor?.name || 'Non assigne'} />
                       <InfoTile label="Debut" value={app.startDate || 'A definir'} />
                       <InfoTile label="Fin" value={app.endDate || 'A definir'} />
                       <InfoTile label="Archivage" value={app.expiresAt ? new Date(app.expiresAt).toLocaleDateString() : 'Non programme'} />
+                    </div>
+
+                    <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 p-4 text-xs">
+                      <span className="block font-bold uppercase text-emerald-900">Destination de la candidature</span>
+                      <p className="mt-1.5 font-medium leading-5 text-emerald-950">
+                        {app.targetCompanyNote || `Cette candidature est dirigee vers ${app.companyName}.`}
+                      </p>
                     </div>
 
                     <div className="rounded-lg border border-slate-150 bg-white p-4">
@@ -238,7 +246,7 @@ export default function ApplicationsList() {
 
                     {app.notes && (
                       <div className="rounded-lg border border-blue-150 bg-blue-50/60 p-4 text-xs">
-                        <span className="block font-bold uppercase text-blue-900">Message entreprise</span>
+                        <span className="block font-bold uppercase text-blue-900">Message de {app.companyName}</span>
                         <p className="mt-1.5 whitespace-pre-wrap font-medium italic text-blue-950">{app.notes}</p>
                       </div>
                     )}

@@ -124,6 +124,7 @@ export interface Application {
   cvUrl: string;
   coverLetter: string;
   status: ApplicationStatus;
+  targetCompanyNote?: string;
   notes?: string;
   departmentId?: string;
   departmentName?: string;

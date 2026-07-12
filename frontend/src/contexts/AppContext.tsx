@@ -440,13 +440,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         cvUrl: newStudent.cvUrl || '#',
         coverLetter: metadata.coverLetter || '',
         status: ApplicationStatus.PENDING,
+        targetCompanyNote: `Demande de stage destinee a ${company.name}.`,
         departmentId: newStudent.departmentId,
         departmentName: newStudent.departmentName,
         specialty: newStudent.specialty,
         createdAt: new Date().toISOString()
       };
       mockDb.saveApplications([newApplication, ...mockDb.getApplications()]);
-      mockDb.addNotification(company.userId, 'Nouvelle demande de stage', `${name} a cree un compte lie a votre entreprise.`);
+      mockDb.addNotification(
+        company.userId,
+        'Nouvelle demande de stage',
+        `${name} a envoye une demande de stage destinee a ${company.name}.`
+      );
+      mockDb.getUsers()
+        .filter((user) => user.role === RoleType.ADMIN)
+        .forEach((admin) => mockDb.addNotification(
+          admin.id,
+          'Nouvelle demande de stage',
+          `${name} a postule pour ${company.name}.`
+        ));
     }
 
     mockDb.addAuditLog(newUser.id, newUser.name, 'INSCRIPTION', `Creation compte role: ${role}`);
@@ -482,6 +494,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       company.id === existingCompany.id ? { ...company, ...update } : company
     );
     mockDb.saveCompanies(updatedCompanies);
+    if (update.logoUrl) {
+      mockDb.saveInternships(mockDb.getInternships().map((internship) =>
+        internship.companyId === existingCompany.id ? { ...internship, companyLogo: update.logoUrl || internship.companyLogo } : internship
+      ));
+    }
     mockDb.addAuditLog(currentUser.id, currentUser.name, 'PROFIL_ENTREPRISE_MAJ', 'Mise a jour du profil entreprise');
     loadAllData(true);
     showToast('Profil entreprise mis a jour.', 'success');
@@ -535,6 +552,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       cvUrl: details.cvUrl || studentProfile.cvUrl || '#',
       coverLetter: coverLetter || studentProfile.coverLetter || '',
       status: ApplicationStatus.PENDING,
+      targetCompanyNote: `Candidature destinee a ${internship.companyName} pour l'offre "${internship.title}".`,
       departmentId: details.departmentId || studentProfile.departmentId,
       departmentName: details.departmentName || studentProfile.departmentName,
       specialty: details.specialty || studentProfile.specialty,
@@ -555,7 +573,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           }
         : student
     ));
-    if (company) mockDb.addNotification(company.userId, 'Nouvelle candidature recue', `${studentProfile.name} a postule a ${internship.title}.`);
+    if (company) {
+      mockDb.addNotification(
+        company.userId,
+        'Nouvelle candidature recue',
+        `${studentProfile.name} a postule a "${internship.title}" chez ${internship.companyName}. Cette candidature est dirigee vers votre entreprise.`
+      );
+    }
+    mockDb.getUsers()
+      .filter((user) => user.role === RoleType.ADMIN)
+      .forEach((admin) => mockDb.addNotification(
+        admin.id,
+        'Nouvelle candidature',
+        `${studentProfile.name} a postule a "${internship.title}" chez ${internship.companyName}.`
+      ));
     mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_ENVOI', `Candidature envoyee pour ${internship.title}`);
     loadAllData(true);
     showToast('Candidature envoyee.', 'success');
@@ -694,15 +725,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const accepted = [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(status);
       const rejected = status === ApplicationStatus.REJECTED;
       const notificationTitle = accepted
-        ? 'Compte etudiant active'
+        ? `Candidature acceptee par ${updatedApp.companyName}`
         : rejected
-          ? 'Demande de stage refusee'
-          : 'Mise a jour candidature';
+          ? `Candidature refusee par ${updatedApp.companyName}`
+          : `Reponse de ${updatedApp.companyName}`;
       const notificationMessage = accepted
-        ? 'Votre demande de stage a ete acceptee. Votre compte est maintenant active et pret a etre utilise. Vous pouvez vous connecter pour acceder a votre espace etudiant.'
+        ? `${updatedApp.companyName} a accepte votre demande pour "${updatedApp.internshipTitle}". Votre compte est maintenant active et pret a etre utilise. Vous pouvez vous connecter pour acceder a votre espace etudiant.${notes ? ` Message: ${notes}` : ''}`
         : rejected
-          ? 'Votre demande de stage n a pas ete retenue par l entreprise. Votre compte sera supprime automatiquement dans un delai de 24 heures. Vos informations resteront archivees.'
-          : `Votre demande est en cours d examen par l entreprise. ${notes}`;
+          ? `${updatedApp.companyName} a refuse votre demande pour "${updatedApp.internshipTitle}". Votre compte sera supprime automatiquement dans un delai de 24 heures. Vos informations resteront archivees.${notes ? ` Motif: ${notes}` : ''}`
+          : `${updatedApp.companyName} a repondu a votre demande pour "${updatedApp.internshipTitle}". ${notes}`;
       mockDb.addNotification(student.userId, notificationTitle, notificationMessage);
     }
     mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_STATUT_MAJ', `Candidature #${id} mise a jour: ${status}`);

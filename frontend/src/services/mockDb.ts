@@ -693,6 +693,7 @@ function normalizeUser(user: any): User {
     ...user,
     role,
     status: user.status || 'active',
+    passwordHash: user.passwordHash,
     assignedStudentIds: role === RoleType.SUPERVISOR
       ? Array.from(new Set([...(user.assignedStudentIds || []), ...(user.id === 'user-supervisor-demo-1' ? ['student-profile-1'] : [])]))
       : user.assignedStudentIds
@@ -738,6 +739,7 @@ function normalizeApplication(app: any): Application {
     ...app,
     status: normalizeApplicationStatus(app.status),
     companyId: app.companyId || internship?.companyId || company?.id,
+    targetCompanyNote: app.targetCompanyNote || `Cette candidature est dirigee vers ${app.companyName || company?.name || 'l entreprise choisie'}.`,
     departmentName: app.departmentName || 'Non precise',
     specialty: app.specialty || 'Non precise'
   };

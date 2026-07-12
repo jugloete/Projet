@@ -122,7 +122,7 @@ export default function InternshipsList() {
     try {
       if (selectedInternship) {
         applyToInternship(selectedInternship.id, cvName, coverLetter, { cvUrl });
-        setSuccessMsg('Votre candidature a été envoyée avec succès à l\'entreprise !');
+        setSuccessMsg(`Votre candidature a ete envoyee avec succes a ${selectedInternship.companyName}.`);
         setTimeout(() => {
           setApplyModalOpen(false);
           setSelectedInternship(null);
@@ -455,6 +455,9 @@ export default function InternshipsList() {
               <p className="text-xs text-slate-500">
                 L'entreprise <strong>{selectedInternship.companyName}</strong> recevra instantanément une notification système contenant vos éléments ci-dessous.
               </p>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">
+                Cette candidature sera dirigee vers <strong>{selectedInternship.companyName}</strong> pour l'offre <strong>{selectedInternship.title}</strong>.
+              </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
