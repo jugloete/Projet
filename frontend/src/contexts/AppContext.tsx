@@ -1,17 +1,22 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
-  User, 
-  RoleType, 
-  StudentProfile, 
-  CompanyProfile, 
-  Internship, 
-  Application, 
-  ApplicationStatus, 
-  Notification, 
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import {
+  Application,
+  ApplicationStatus,
+  ArchiveRecord,
+  AttendanceRecord,
   AuditLog,
+  CompanyProfile,
+  Conversation,
   DailyReport,
+  Department,
+  Internship,
+  Message,
+  Notification,
+  RoleType,
+  StudentAcceptance,
   StudentGrade,
-  StudentAcceptance
+  StudentProfile,
+  User
 } from '../types';
 import { mockDb } from '../services/mockDb';
 import { apiClient } from '../services/apiClient';
@@ -20,6 +25,30 @@ export interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';
+}
+
+interface ApplicationDecisionDetails {
+  departmentId?: string;
+  departmentName?: string;
+  specialty?: string;
+  supervisorId?: string;
+  startDate?: string;
+  endDate?: string;
+  acceptanceNote?: string;
+  interviewNote?: string;
+  rejectionReason?: string;
+}
+
+interface SupervisorInput {
+  name: string;
+  email: string;
+  password?: string;
+  phone?: string;
+  position?: string;
+  departmentId?: string;
+  departmentName?: string;
+  skills?: string[];
+  assignedStudentIds?: string[];
 }
 
 interface AppContextType {
@@ -37,42 +66,125 @@ interface AppContextType {
   dailyReports: DailyReport[];
   studentGrades: StudentGrade[];
   studentAcceptances: StudentAcceptance[];
+  attendanceRecords: AttendanceRecord[];
+  conversations: Conversation[];
+  messages: Message[];
+  archives: ArchiveRecord[];
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   removeToast: (id: string) => void;
-  login: (email: string, role: RoleType) => Promise<boolean>;
+  login: (email: string, role: RoleType, password?: string) => Promise<boolean>;
   logout: () => void;
-  register: (name: string, email: string, role: RoleType, details?: any) => Promise<boolean>;
+  register: (name: string, email: string, role: RoleType, password?: string, details?: any) => Promise<boolean>;
   updateStudentProfile: (profile: Partial<StudentProfile>) => void;
   updateCompanyProfile: (profile: Partial<CompanyProfile>) => void;
   assignStudentToSupervisor: (supervisorId: string, studentId?: string) => void;
   createInternship: (internship: Omit<Internship, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'status' | 'createdAt'>) => void;
   updateInternship: (id: string, internship: Partial<Internship>) => void;
   validateInternship: (id: string, action: 'published' | 'rejected') => void;
-  applyToInternship: (internshipId: string, cvName: string, coverLetter: string) => void;
-  updateApplicationStatus: (id: string, status: ApplicationStatus, notes?: string) => void;
+  applyToInternship: (internshipId: string, cvName: string, coverLetter: string, details?: Partial<Application>) => void;
+  updateApplicationStatus: (id: string, status: ApplicationStatus, notes?: string, details?: ApplicationDecisionDetails) => void;
   markNotificationAsRead: (id: string) => void;
   toggleFavoriteInternship: (id: string) => void;
   suspendUser: (id: string) => void;
   reactivateUser: (id: string) => void;
   createUserByAdmin: (user: Omit<User, 'id' | 'createdAt'>) => void;
-  addDailyReport: (activity: string, date: string, hoursWorked: number) => void;
+  addDailyReport: (activity: string, date: string, hoursWorked: number, details?: Partial<DailyReport>) => void;
   updateDailyReportByAdmin: (id: string, updates: Partial<DailyReport>) => void;
-  addStudentGrade: (studentId: string, studentName: string, subject: string, grade: number, comment?: string) => void;
+  addStudentGrade: (studentId: string, studentName: string, subject: string, grade: number, comment?: string, details?: Partial<StudentGrade>) => void;
   updateStudentGrade: (id: string, updates: Partial<StudentGrade>) => void;
   updateAcceptanceStatus: (id: string, status: 'pending' | 'approved' | 'rejected') => void;
   addPartnerCompanyByAdmin: (company: Omit<CompanyProfile, 'id'>) => void;
   updatePartnerCompanyByAdmin: (id: string, updates: Partial<CompanyProfile>) => void;
   deletePartnerCompanyByAdmin: (id: string) => void;
-  createSupervisorAccount: (name: string, email: string, password?: string) => void;
+  createSupervisorAccount: (input: SupervisorInput | string, email?: string, password?: string, details?: Partial<SupervisorInput>) => void;
+  updateSupervisorAccount: (id: string, updates: Partial<SupervisorInput>) => void;
+  addAttendanceRecord: (record: Omit<AttendanceRecord, 'id' | 'studentId' | 'studentName' | 'companyId' | 'supervisorId' | 'status' | 'createdAt'>) => void;
+  reviewAttendanceRecord: (id: string, status: 'validee' | 'refusee', comment?: string) => void;
+  sendMessage: (conversationId: string, body: string, attachmentName?: string) => void;
+  getOrCreateConversation: (studentId: string, supervisorId: string) => string;
 }
 
-const AppContext = createContext<any>(undefined);
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const DEFAULT_DEPARTMENTS: Department[] = [
+  { id: 'informatique', name: 'Informatique' },
+  { id: 'ressources-humaines', name: 'Ressources humaines' },
+  { id: 'finance', name: 'Finance' },
+  { id: 'maintenance', name: 'Maintenance' },
+  { id: 'communication', name: 'Communication' }
+];
+
+const DEFAULT_SPECIALTIES = ['Genie logiciel', 'Reseaux informatiques', 'Finance', 'Comptabilite', 'Electromecanique'];
+const DEFAULT_SKILLS = ['React', 'Node.js', 'Excel avance', 'Communication', 'Maintenance', 'Analyse de donnees'];
+let mongoSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
+function makeId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function hashPassword(password?: string) {
+  if (!password) return undefined;
+  try {
+    return `local:${btoa(unescape(encodeURIComponent(password)))}`;
+  } catch {
+    return `local:${password.length}`;
+  }
+}
+
+function passwordMatches(user: User, password?: string) {
+  if (!password) return false;
+  if (user.passwordHash) return user.passwordHash === hashPassword(password);
+  return true;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isActiveStudent(student: StudentProfile) {
+  return !student.isArchived && student.status !== ApplicationStatus.ARCHIVED;
+}
+
+function canStudentAccessWorkspace(student?: StudentProfile) {
+  return Boolean(
+    student &&
+    !student.isArchived &&
+    [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(student.status || ApplicationStatus.PENDING)
+  );
+}
+
+function isOfficiallyAssignedToSupervisor(student: StudentProfile, supervisor?: User) {
+  return Boolean(
+    supervisor &&
+    supervisor.role === RoleType.SUPERVISOR &&
+    !student.isArchived &&
+    [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(student.status || ApplicationStatus.PENDING) &&
+    student.supervisorId === supervisor.id &&
+    (supervisor.assignedStudentIds || []).includes(student.id)
+  );
+}
+
+function splitCsv(value?: string | string[]) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildCompanyDefaults(companyId: string) {
+  return DEFAULT_DEPARTMENTS.map((department, index) => ({
+    ...department,
+    id: `${companyId}-${department.id}-${index}`
+  }));
+}
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
-
   const [users, setUsers] = useState<User[]>([]);
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
@@ -80,35 +192,49 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [toasts, setToasts] = useState<Toast[]>([]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [studentGrades, setStudentGrades] = useState<StudentGrade[]>([]);
   const [studentAcceptances, setStudentAcceptances] = useState<StudentAcceptance[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [archives, setArchives] = useState<ArchiveRecord[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Load state on mount and hydrate from MongoDB when the API is available.
-  useEffect(() => {
-    mockDb.initialize();
-    loadAllData();
+  const loadUserProfiles = (user: User | null) => {
+    if (!user) {
+      setStudentProfile(null);
+      setCompanyProfile(null);
+      return;
+    }
 
-    apiClient.getSnapshot()
-      .then((snapshot) => {
-        if (snapshot && snapshot.users?.length) {
-          mockDb.importSnapshot(snapshot);
-          loadAllData();
-        }
-      })
-      .catch(() => {
-        // The frontend remains fully usable offline through localStorage.
-      });
-  }, []);
+    if (user.role === RoleType.STUDENT) {
+      setStudentProfile(mockDb.getStudents().find((profile) => profile.userId === user.id) || null);
+      setCompanyProfile(null);
+      return;
+    }
+
+    if (user.role === RoleType.COMPANY) {
+      setCompanyProfile(mockDb.getCompanies().find((profile) => profile.userId === user.id) || null);
+      setStudentProfile(null);
+      return;
+    }
+
+    setStudentProfile(null);
+    setCompanyProfile(null);
+  };
 
   const syncToMongo = () => {
-    apiClient.saveSnapshot(mockDb.exportSnapshot()).catch(() => {
-      // Keep the UI fast and local-first when MongoDB/API is temporarily unavailable.
-    });
+    if (mongoSyncTimer) clearTimeout(mongoSyncTimer);
+    mongoSyncTimer = setTimeout(() => {
+      apiClient.saveSnapshot(mockDb.exportSnapshot()).catch(() => {
+        // The UI remains local-first when the API or MongoDB is unavailable.
+      });
+    }, 350);
   };
 
   const loadAllData = (sync = false) => {
+    mockDb.initialize();
     setUsers(mockDb.getUsers());
     setStudents(mockDb.getStudents());
     setCompanies(mockDb.getCompanies());
@@ -119,649 +245,875 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setDailyReports(mockDb.getDailyReports());
     setStudentGrades(mockDb.getStudentGrades());
     setStudentAcceptances(mockDb.getStudentAcceptance());
+    setAttendanceRecords(mockDb.getAttendanceRecords());
+    setConversations(mockDb.getConversations());
+    setMessages(mockDb.getMessages());
+    setArchives(mockDb.getArchives());
+
+    if (currentUser) {
+      const refreshedUser = mockDb.getUsers().find((user) => user.id === currentUser.id);
+      if (!refreshedUser) {
+        setCurrentUser(null);
+        setStudentProfile(null);
+        setCompanyProfile(null);
+        localStorage.removeItem('session_user');
+        if (sync) syncToMongo();
+        return;
+      }
+      setCurrentUser(refreshedUser);
+      loadUserProfiles(refreshedUser);
+    }
+
     if (sync) syncToMongo();
   };
 
-  const loadUserProfiles = (user: User) => {
-    if (user.role === RoleType.STUDENT) {
-      const profiles = mockDb.getStudents();
-      const p = profiles.find(prof => prof.userId === user.id) || null;
-      setStudentProfile(p);
-      setCompanyProfile(null);
-    } else if (user.role === RoleType.COMPANY) {
-      const profiles = mockDb.getCompanies();
-      const p = profiles.find(prof => prof.userId === user.id) || null;
-      setCompanyProfile(p);
-      setStudentProfile(null);
-    } else {
-      setStudentProfile(null);
-      setCompanyProfile(null);
-    }
-  };
+  useEffect(() => {
+    mockDb.initialize();
+    loadAllData();
+    localStorage.removeItem('session_user');
+
+    apiClient.getSnapshot()
+      .then((snapshot) => {
+        if (snapshot?.users?.length) {
+          mockDb.importSnapshot(snapshot);
+          loadAllData();
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts(prev => [...prev, { id, message, type }]);
-    
-    // Auto-remove after 4.5 seconds
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4500);
+    const id = makeId('toast');
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 4500);
   };
 
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((toast) => toast.id !== id));
 
-  const login = async (email: string, role: RoleType): Promise<boolean> => {
-    const allUsers = mockDb.getUsers();
-    // First try exact match with provided role (normal case), otherwise allow login by email alone
-    let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.role === role);
-    if (!user) {
-      user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const login = async (email: string, role: RoleType, password?: string) => {
+    const user = mockDb.getUsers().find(
+      (candidate) => candidate.email.toLowerCase() === email.toLowerCase() && candidate.role === role
+    );
+
+    if (!user) return false;
+    if (!passwordMatches(user, password)) throw new Error('Mot de passe incorrect.');
+    if (!user.passwordHash && password) {
+      mockDb.saveUsers(mockDb.getUsers().map((candidate) =>
+        candidate.id === user.id ? { ...candidate, passwordHash: hashPassword(password) } : candidate
+      ));
+      user.passwordHash = hashPassword(password);
     }
+    if (user.status === 'suspended' && role !== RoleType.STUDENT) throw new Error('Votre compte est suspendu. Contactez votre entreprise.');
+    if (user.status === 'archived') throw new Error('Ce compte est archive et ne peut plus acceder a la plateforme.');
 
-    if (user) {
-      if (user.status === 'suspended') {
-        throw new Error('Votre compte est suspendu. Veuillez contacter un administrateur.');
+    if (role === RoleType.STUDENT) {
+      const profile = mockDb.getStudents().find((student) => student.userId === user.id);
+      if (!profile || profile.isArchived) {
+        throw new Error('Votre compte etudiant est archive ou introuvable.');
       }
-      setCurrentUser(user);
-      localStorage.setItem('session_user', JSON.stringify(user));
-      loadUserProfiles(user);
-      mockDb.addAuditLog(user.id, user.name, 'CONNEXION', `Connexion réussie en tant que ${role}`);
-      loadAllData(true);
-      return true;
+      if (profile.status === ApplicationStatus.PENDING || profile.status === ApplicationStatus.INTERVIEW) {
+        throw new Error('Votre demande est encore en attente de validation par l entreprise.');
+      }
+      if (profile.status === ApplicationStatus.REJECTED) {
+        throw new Error('Votre demande a ete refusee. Votre dossier reste conserve dans les archives.');
+      }
+      if (!canStudentAccessWorkspace(profile)) {
+        throw new Error('Votre compte etudiant doit etre accepte par une entreprise avant acces.');
+      }
     }
-    return false;
+
+    setCurrentUser(user);
+    loadUserProfiles(user);
+    mockDb.addAuditLog(user.id, user.name, 'CONNEXION', `Connexion reussie en tant que ${role}`);
+    loadAllData(true);
+    return true;
   };
 
   const logout = () => {
-    if (currentUser) {
-      mockDb.addAuditLog(currentUser.id, currentUser.name, 'DECONNEXION', 'Déconnexion réussie');
-    }
+    if (currentUser) mockDb.addAuditLog(currentUser.id, currentUser.name, 'DECONNEXION', 'Deconnexion reussie');
     setCurrentUser(null);
     setStudentProfile(null);
     setCompanyProfile(null);
     localStorage.removeItem('session_user');
   };
 
-  const register = async (name: string, email: string, role: RoleType, details?: any): Promise<boolean> => {
-    const allUsers = mockDb.getUsers();
-    if (allUsers.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      throw new Error('Cette adresse email est déjà enregistrée.');
+  const register = async (name: string, email: string, role: RoleType, password?: string, details?: any) => {
+    const metadata = typeof password === 'object' ? password : details || {};
+    const rawPassword = typeof password === 'string' ? password : metadata?.password;
+
+    if (!name.trim() || !email.trim() || !rawPassword) {
+      throw new Error('Nom, email et mot de passe sont obligatoires.');
+    }
+    if (role === RoleType.ADMIN || role === RoleType.SUPERVISOR) {
+      throw new Error('Ce type de compte ne peut pas etre cree depuis la partie publique.');
+    }
+    if (mockDb.getUsers().some((user) => user.email.toLowerCase() === email.toLowerCase())) {
+      throw new Error('Cette adresse email est deja enregistree.');
     }
 
     const newUser: User = {
-      id: `user-${Date.now()}`,
+      id: makeId('user'),
       name,
       email,
       role,
-      status: 'active',
-      createdAt: new Date().toISOString()
+      status: role === RoleType.STUDENT ? 'suspended' : 'active',
+      createdAt: new Date().toISOString(),
+      passwordHash: hashPassword(rawPassword),
+      companyId: metadata.companyId
     };
 
-    const updatedUsers = [...allUsers, newUser];
-    mockDb.saveUsers(updatedUsers);
+    mockDb.saveUsers([newUser, ...mockDb.getUsers()]);
 
-    if (role === RoleType.STUDENT) {
-      const allStudents = mockDb.getStudents();
-      const newStudent: StudentProfile = {
-        id: `student-${Date.now()}`,
+    if (role === RoleType.COMPANY) {
+      const newCompanyId = makeId('company');
+      const newCompany: CompanyProfile = {
+        id: newCompanyId,
         userId: newUser.id,
         name,
         email,
-        phone: details?.phone || '',
-        avatarUrl: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 900000)}?auto=format&fit=crop&w=150&q=80`,
-        cvName: '',
-        cvUrl: '',
-        coverLetter: '',
-        bio: '',
-        skills: details?.skills || [],
-        education: details?.education || '',
-        favoriteInternships: []
-      };
-      mockDb.saveStudents([...allStudents, newStudent]);
-    } else if (role === RoleType.COMPANY) {
-      const allComp = mockDb.getCompanies();
-      const newComp: CompanyProfile = {
-        id: `company-${Date.now()}`,
-        userId: newUser.id,
-        name,
-        email,
-        logoUrl: `https://images.unsplash.com/photo-${1560000000000 + Math.floor(Math.random() * 900000)}?auto=format&fit=crop&w=150&q=80`,
-        sector: details?.sector || 'Non spécifié',
-        address: details?.address || 'Non spécifié',
+        logoUrl: `https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=150&q=80`,
+        sector: metadata.sector || 'Non specifie',
+        address: metadata.address || 'Non specifie',
         contactName: name,
         contactEmail: email,
-        contactPhone: details?.phone || '',
-        description: details?.description || ''
+        contactPhone: metadata.phone || '',
+        description: metadata.description || '',
+        departments: buildCompanyDefaults(newCompanyId),
+        requiredSkills: DEFAULT_SKILLS,
+        acceptedSpecialties: DEFAULT_SPECIALTIES,
+        eligibilityCriteria: 'CV lisible, specialite compatible et disponibilite pendant la duree du stage.'
       };
-      mockDb.saveCompanies([...allComp, newComp]);
-
-      // Notify admin and supervisors
-      const admins = updatedUsers.filter(u => u.role === RoleType.ADMIN || u.role === RoleType.SUPERVISOR);
-      admins.forEach(admin => {
-        mockDb.addNotification(admin.id, 'Nouvelle entreprise inscrite', `L'entreprise "${name}" s'est inscrite sur la plateforme.`);
-      });
+      mockDb.saveCompanies([newCompany, ...mockDb.getCompanies()]);
     }
 
-    mockDb.addAuditLog(newUser.id, newUser.name, 'INSCRIPTION', `Inscription compte role: ${role}`);
-    
-    // Automatically log in
-    setCurrentUser(newUser);
-    localStorage.setItem('session_user', JSON.stringify(newUser));
-    loadUserProfiles(newUser);
+    if (role === RoleType.STUDENT) {
+      const company = mockDb.getCompanies().find((item) => item.id === metadata.companyId);
+      if (!company) {
+        mockDb.saveUsers(mockDb.getUsers().filter((user) => user.id !== newUser.id));
+        throw new Error('Choisissez une entreprise avant de creer un compte etudiant.');
+      }
+
+      const department =
+        company.departments?.find((item) => item.id === metadata.departmentId || item.name === metadata.departmentName) ||
+        company.departments?.[0];
+      const studentId = makeId('student');
+      const newStudent: StudentProfile = {
+        id: studentId,
+        userId: newUser.id,
+        name,
+        email,
+        phone: metadata.phone || '',
+        avatarUrl: `https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80`,
+        cvName: metadata.cvName || '',
+        cvUrl: metadata.cvName ? '#' : '',
+        coverLetter: metadata.coverLetter || '',
+        bio: metadata.bio || '',
+        skills: splitCsv(metadata.skills),
+        education: metadata.education || [metadata.faculty, metadata.level, metadata.field].filter(Boolean).join(' - '),
+        favoriteInternships: [],
+        university: metadata.university || '',
+        faculty: metadata.faculty || '',
+        level: metadata.level || '',
+        field: metadata.field || '',
+        specialty: metadata.specialty || '',
+        companyId: company.id,
+        companyName: company.name,
+        departmentId: department?.id,
+        departmentName: department?.name || metadata.departmentName || '',
+        applicationStatus: ApplicationStatus.PENDING,
+        status: ApplicationStatus.PENDING,
+        isArchived: false
+      };
+      mockDb.saveStudents([newStudent, ...mockDb.getStudents()]);
+
+      const matchingInternship = mockDb.getInternships().find((item) => item.companyId === company.id && item.status === 'published');
+      const newApplication: Application = {
+        id: makeId('app'),
+        internshipId: matchingInternship?.id || `direct-${company.id}`,
+        internshipTitle: matchingInternship?.title || `Demande de stage - ${company.name}`,
+        companyId: company.id,
+        companyName: company.name,
+        studentId,
+        studentName: name,
+        studentEmail: email,
+        cvName: newStudent.cvName || 'CV a fournir',
+        cvUrl: newStudent.cvUrl || '#',
+        coverLetter: metadata.coverLetter || '',
+        status: ApplicationStatus.PENDING,
+        departmentId: newStudent.departmentId,
+        departmentName: newStudent.departmentName,
+        specialty: newStudent.specialty,
+        createdAt: new Date().toISOString()
+      };
+      mockDb.saveApplications([newApplication, ...mockDb.getApplications()]);
+      mockDb.addNotification(company.userId, 'Nouvelle demande de stage', `${name} a cree un compte lie a votre entreprise.`);
+    }
+
+    mockDb.addAuditLog(newUser.id, newUser.name, 'INSCRIPTION', `Creation compte role: ${role}`);
+    if (role === RoleType.COMPANY) {
+      setCurrentUser(newUser);
+      loadUserProfiles(newUser);
+    } else {
+      setCurrentUser(null);
+      setStudentProfile(null);
+      setCompanyProfile(null);
+      localStorage.removeItem('session_user');
+    }
     loadAllData(true);
     return true;
   };
 
   const updateStudentProfile = (update: Partial<StudentProfile>) => {
-    if (!studentProfile) return;
-    const allStudents = mockDb.getStudents();
-    const updated = allStudents.map(s => s.id === studentProfile.id ? { ...s, ...update } : s);
-    mockDb.saveStudents(updated);
-    setStudentProfile({ ...studentProfile, ...update });
-    mockDb.addAuditLog(currentUser!.id, currentUser!.name, 'PROFIL_MAJ', 'Mise à jour du profil étudiant');
-    loadAllData(true);
-  };
-
-  const assignStudentToSupervisor = (supervisorId: string, studentId?: string) => {
-    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) {
-      showToast("Action non autorisée. Seuls les administrateurs et superviseurs peuvent affecter des étudiants.", "error");
-      return;
-    }
-
-    const allStudents = mockDb.getStudents();
-    const targetStudent = allStudents.find(s => s.id === studentId);
-    if (studentId && !targetStudent) {
-      showToast("Étudiant introuvable.", "error");
-      return;
-    }
-
-    const updatedStudents = allStudents.map(student => {
-      if (studentId && student.id === studentId) {
-        return { ...student, supervisorId };
-      }
-      if (student.supervisorId === supervisorId && student.id !== studentId) {
-        return { ...student, supervisorId: undefined };
-      }
-      return student;
-    });
-
+    if (!studentProfile || !currentUser) return;
+    const updatedStudents = mockDb.getStudents().map((student) =>
+      student.id === studentProfile.id ? { ...student, ...update } : student
+    );
     mockDb.saveStudents(updatedStudents);
-    const supervisor = mockDb.getUsers().find(u => u.id === supervisorId);
-    const studentName = targetStudent ? targetStudent.name : 'aucun étudiant';
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'AFFECTATION_ETUDIANT', `Affectation de ${studentName} au maître de stage ${supervisor?.name || supervisorId}`);
-    showToast(`Étudiant ${studentName !== 'aucun étudiant' ? `assigné à ${supervisor?.name}` : 'désassigné'} !`, "success");
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'PROFIL_ETUDIANT_MAJ', 'Mise a jour du profil etudiant');
     loadAllData(true);
+    showToast('Profil etudiant mis a jour.', 'success');
   };
 
   const updateCompanyProfile = (update: Partial<CompanyProfile>) => {
-    const allComp = mockDb.getCompanies();
-    if (!companyProfile) {
-      // Create a new company profile linked to the current user
-      const newComp: CompanyProfile = {
-        id: `company-${Date.now()}`,
-        userId: currentUser!.id,
-        name: currentUser!.name,
-        email: currentUser!.email,
-        logoUrl: `https://images.unsplash.com/photo-${1600000000000 + Math.floor(Math.random() * 900000)}?auto=format&fit=crop&w=150&q=80`,
-        sector: update.sector || 'Non spécifié',
-        address: update.address || '',
-        contactName: update.contactName || currentUser!.name,
-        contactEmail: update.contactEmail || currentUser!.email,
-        contactPhone: update.contactPhone || '',
-        description: update.description || ''
-      };
-      mockDb.saveCompanies([newComp, ...allComp]);
-      setCompanyProfile(newComp);
-      mockDb.addAuditLog(currentUser!.id, currentUser!.name, 'PROFIL_CREATION', 'Création du profil entreprise');
-      loadAllData(true);
-      return;
-    }
-
-    const updated = allComp.map(c => c.id === companyProfile.id ? { ...c, ...update } : c);
-    mockDb.saveCompanies(updated);
-    setCompanyProfile({ ...companyProfile, ...update });
-    mockDb.addAuditLog(currentUser!.id, currentUser!.name, 'PROFIL_MAJ', 'Mise à jour du profil entreprise');
+    if (!currentUser) return;
+    const existingCompany = companyProfile || mockDb.getCompanies().find((company) => company.userId === currentUser.id);
+    if (!existingCompany) return;
+    const updatedCompanies = mockDb.getCompanies().map((company) =>
+      company.id === existingCompany.id ? { ...company, ...update } : company
+    );
+    mockDb.saveCompanies(updatedCompanies);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'PROFIL_ENTREPRISE_MAJ', 'Mise a jour du profil entreprise');
     loadAllData(true);
+    showToast('Profil entreprise mis a jour.', 'success');
   };
 
   const createInternship = (internshipData: Omit<Internship, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'status' | 'createdAt'>) => {
-    if (!currentUser || !companyProfile) return;
-    const allInternships = mockDb.getInternships();
+    if (!currentUser || currentUser.role !== RoleType.COMPANY || !companyProfile) return;
     const newInternship: Internship = {
       ...internshipData,
-      id: `internship-${Date.now()}`,
+      id: makeId('internship'),
       companyId: companyProfile.id,
       companyName: companyProfile.name,
       companyLogo: companyProfile.logoUrl,
-      status: 'pending', // Awaiting admin validation
+      status: 'published',
       createdAt: new Date().toISOString()
     };
-    mockDb.saveInternships([newInternship, ...allInternships]);
-
-    // Audit and Admin/Supervisor Notif
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_CREEE', `Création d'offre de stage: ${newInternship.title}`);
-    
-    // Notify Admin users
-    const allUsers = mockDb.getUsers();
-    const admins = allUsers.filter(u => u.role === RoleType.ADMIN || u.role === RoleType.SUPERVISOR);
-    admins.forEach(admin => {
-      mockDb.addNotification(
-        admin.id, 
-        'Validation requise', 
-        `L'entreprise "${companyProfile.name}" a proposé un nouveau stage: "${newInternship.title}".`
-      );
-    });
-
+    mockDb.saveInternships([newInternship, ...mockDb.getInternships()]);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_CREEE', `Creation offre de stage: ${newInternship.title}`);
     loadAllData(true);
+    showToast('Offre de stage publiee.', 'success');
   };
 
   const updateInternship = (id: string, update: Partial<Internship>) => {
     if (!currentUser) return;
-    const allInternships = mockDb.getInternships();
-    const updated = allInternships.map(i => i.id === id ? { ...i, ...update } : i);
+    const updated = mockDb.getInternships().map((internship) => internship.id === id ? { ...internship, ...update } : internship);
     mockDb.saveInternships(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_MAJ', `Modification de l'offre de stage #${id}`);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_MAJ', `Modification offre #${id}`);
     loadAllData(true);
   };
 
-  const validateInternship = (id: string, action: 'published' | 'rejected') => {
-    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
-    const allInternships = mockDb.getInternships();
-    const internship = allInternships.find(i => i.id === id);
-    if (!internship) return;
+  const validateInternship = (id: string, action: 'published' | 'rejected') => updateInternship(id, { status: action });
 
-    const updated = allInternships.map(i => i.id === id ? { ...i, status: action } : i);
-    mockDb.saveInternships(updated);
-
-    // Notify company profile
-    const allComp = mockDb.getCompanies();
-    const company = allComp.find(c => c.id === internship.companyId);
-    if (company) {
-      const message = action === 'published' 
-        ? `Félicitations ! Votre offre de stage "${internship.title}" a été approuvée et publiée.`
-        : `Votre offre de stage "${internship.title}" a été refusée par l'administrateur.`;
-      
-      mockDb.addNotification(company.userId, `Statut de votre annonce : ${action === 'published' ? 'Validée' : 'Refusée'}`, message);
-    }
-
-    // If published, notify students
-    if (action === 'published') {
-      const allStuds = mockDb.getStudents();
-      allStuds.forEach(student => {
-        const hasMatchingSkill = student.skills.some(skill => 
-          internship.skillsRequired.map(s => s.toLowerCase()).includes(skill.toLowerCase())
-        );
-        if (hasMatchingSkill) {
-          mockDb.addNotification(
-            student.userId,
-            'Nouveau stage recommandé',
-            `Un nouveau stage correspondant à vos compétences est disponible : "${internship.title}" chez ${internship.companyName}`
-          );
-        }
-      });
-    }
-
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'OFFRE_VALIDATION', `Offre ${internship.title} mise à jour à: ${action}`);
-    loadAllData(true);
-  };
-
-  const applyToInternship = (internshipId: string, cvName: string, coverLetter: string) => {
+  const applyToInternship = (internshipId: string, cvName: string, coverLetter: string, details: Partial<Application> = {}) => {
     if (!currentUser || !studentProfile) return;
-    const internship = internships.find(i => i.id === internshipId);
+    const internship = mockDb.getInternships().find((item) => item.id === internshipId);
     if (!internship) return;
-
-    const allApps = mockDb.getApplications();
-    if (allApps.some(a => a.internshipId === internshipId && a.studentId === studentProfile.id)) {
-      throw new Error('Vous avez déjà postulé à cette offre.');
+    if (mockDb.getApplications().some((app) => app.internshipId === internshipId && app.studentId === studentProfile.id)) {
+      throw new Error('Vous avez deja postule a cette offre.');
     }
-
+    const company = mockDb.getCompanies().find((item) => item.id === internship.companyId);
     const newApp: Application = {
-      id: `app-${Date.now()}`,
+      id: makeId('app'),
       internshipId,
       internshipTitle: internship.title,
+      companyId: internship.companyId,
       companyName: internship.companyName,
       studentId: studentProfile.id,
       studentName: studentProfile.name,
       studentEmail: studentProfile.email,
-      cvName: cvName || studentProfile.cvName || 'cv_attache.pdf',
-      cvUrl: '#',
+      cvName: cvName || studentProfile.cvName || 'CV a fournir',
+      cvUrl: details.cvUrl || studentProfile.cvUrl || '#',
       coverLetter: coverLetter || studentProfile.coverLetter || '',
       status: ApplicationStatus.PENDING,
+      departmentId: details.departmentId || studentProfile.departmentId,
+      departmentName: details.departmentName || studentProfile.departmentName,
+      specialty: details.specialty || studentProfile.specialty,
       createdAt: new Date().toISOString()
     };
-
-    mockDb.saveApplications([newApp, ...allApps]);
-
-    const allComp = mockDb.getCompanies();
-    const company = allComp.find(c => c.id === internship.companyId);
-    if (company) {
-      mockDb.addNotification(
-        company.userId, 
-        'Nouvelle candidature reçue', 
-        `L'étudiant "${studentProfile.name}" a postulé pour le stage "${internship.title}".`
-      );
-    }
-
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_ENVOI', `Candidature envoyée pour ${internship.title}`);
+    mockDb.saveApplications([newApp, ...mockDb.getApplications()]);
+    mockDb.saveStudents(mockDb.getStudents().map((student) =>
+      student.id === studentProfile.id
+        ? {
+            ...student,
+            companyId: internship.companyId,
+            companyName: internship.companyName,
+            applicationStatus: ApplicationStatus.PENDING,
+            status: ApplicationStatus.PENDING,
+            departmentId: newApp.departmentId,
+            departmentName: newApp.departmentName,
+            specialty: newApp.specialty
+          }
+        : student
+    ));
+    if (company) mockDb.addNotification(company.userId, 'Nouvelle candidature recue', `${studentProfile.name} a postule a ${internship.title}.`);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_ENVOI', `Candidature envoyee pour ${internship.title}`);
     loadAllData(true);
+    showToast('Candidature envoyee.', 'success');
   };
 
-  const updateApplicationStatus = (id: string, status: ApplicationStatus, notes?: string) => {
+  const updateApplicationStatus = (id: string, status: ApplicationStatus, notes = '', details: ApplicationDecisionDetails = {}) => {
     if (!currentUser) return;
-    const allApps = mockDb.getApplications();
-    const app = allApps.find(a => a.id === id);
+    const apps = mockDb.getApplications();
+    const app = apps.find((item) => item.id === id);
     if (!app) return;
 
-    const updated = allApps.map(a => a.id === id ? { ...a, status, notes } : a);
-    mockDb.saveApplications(updated);
+    const nowIso = new Date().toISOString();
+    const isRejected = status === ApplicationStatus.REJECTED;
+    const isAccepted = [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(status);
+    const startDate = details.startDate || app.startDate || new Date().toISOString().slice(0, 10);
+    const endDate = details.endDate || app.endDate || addDays(new Date(startDate), 90).toISOString().slice(0, 10);
+    const rejectedAt = isRejected ? nowIso : app.rejectedAt;
+    const expiresAt =
+      isRejected ? nowIso :
+      isAccepted ? new Date(`${endDate}T23:59:59`).toISOString() :
+      app.expiresAt;
 
-    const allStudents = mockDb.getStudents();
-    const student = allStudents.find(s => s.id === app.studentId);
-    if (student) {
-      let message = `Le statut de votre candidature pour le stage "${app.internshipTitle}" chez ${app.companyName} est désormais : ${status}.`;
-      if (notes) {
-        message += ` Notes complémentaires : ${notes}`;
+    const updatedApp: Application = {
+      ...app,
+      status,
+      notes,
+      departmentId: details.departmentId || app.departmentId,
+      departmentName: details.departmentName || app.departmentName,
+      specialty: details.specialty || app.specialty,
+      supervisorId: isRejected ? undefined : details.supervisorId || app.supervisorId,
+      startDate: isAccepted ? startDate : app.startDate,
+      endDate: isAccepted ? endDate : app.endDate,
+      expiresAt,
+      rejectedAt,
+      interviewNote: status === ApplicationStatus.INTERVIEW ? details.interviewNote || notes : app.interviewNote,
+      acceptanceNote: isAccepted ? details.acceptanceNote || notes : app.acceptanceNote,
+      rejectionReason: isRejected ? details.rejectionReason || notes : app.rejectionReason,
+      archivedAt: isRejected ? nowIso : app.archivedAt
+    };
+    mockDb.saveApplications(apps.map((item) => item.id === id ? updatedApp : item));
+
+    const updatedStudents = mockDb.getStudents().map((student) =>
+      student.id === app.studentId
+        ? {
+            ...student,
+            applicationStatus: status,
+            status: isRejected ? ApplicationStatus.ARCHIVED : status,
+            companyId: updatedApp.companyId || student.companyId,
+            companyName: updatedApp.companyName || student.companyName,
+            departmentId: updatedApp.departmentId || student.departmentId,
+            departmentName: updatedApp.departmentName || student.departmentName,
+            specialty: updatedApp.specialty || student.specialty,
+            supervisorId: isRejected ? undefined : updatedApp.supervisorId || student.supervisorId,
+            startDate: updatedApp.startDate || student.startDate,
+            endDate: updatedApp.endDate || student.endDate,
+            expiresAt,
+            rejectedAt,
+            archivedAt: isRejected ? nowIso : student.archivedAt,
+            isArchived: isRejected ? true : student.isArchived,
+            acceptanceNote: updatedApp.acceptanceNote || student.acceptanceNote,
+            interviewNote: updatedApp.interviewNote || student.interviewNote,
+            rejectionReason: updatedApp.rejectionReason || student.rejectionReason
+          }
+        : student
+    );
+    mockDb.saveStudents(updatedStudents);
+
+    if (isRejected) {
+      const rejectedStudent = updatedStudents.find((student) => student.id === app.studentId);
+      if (rejectedStudent) {
+        const archives = mockDb.getArchives();
+        const archiveRecord: ArchiveRecord = {
+          id: archives.find((archive) => archive.studentId === rejectedStudent.id)?.id || makeId('archive'),
+          companyId: rejectedStudent.companyId || updatedApp.companyId,
+          companyName: rejectedStudent.companyName || updatedApp.companyName,
+          studentId: rejectedStudent.id,
+          studentName: rejectedStudent.name,
+          studentEmail: rejectedStudent.email,
+          status: ApplicationStatus.REJECTED,
+          reason: 'rejected',
+          rejectionReason: updatedApp.rejectionReason || notes,
+          archivedAt: nowIso,
+          snapshot: rejectedStudent
+        };
+        mockDb.saveArchives([archiveRecord, ...archives.filter((archive) => archive.studentId !== rejectedStudent.id)]);
       }
-      mockDb.addNotification(student.userId, `Mise à jour candidature : ${status}`, message);
     }
 
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_STATUT_MAJ', `Statut candidature #${id} mis à jour à: ${status}`);
+    const studentForUserUpdate = updatedStudents.find((student) => student.id === app.studentId);
+    if (studentForUserUpdate) {
+      const shouldActivate = canStudentAccessWorkspace(studentForUserUpdate);
+      const shouldArchive = [ApplicationStatus.REJECTED, ApplicationStatus.COMPLETED, ApplicationStatus.ARCHIVED].includes(status);
+      mockDb.saveUsers(mockDb.getUsers().map((user) =>
+        user.id === studentForUserUpdate.userId
+          ? {
+              ...user,
+              status: shouldArchive ? 'suspended' : shouldActivate ? 'active' : user.status
+            }
+          : isRejected && user.role === RoleType.SUPERVISOR
+            ? { ...user, assignedStudentIds: (user.assignedStudentIds || []).filter((studentId) => studentId !== app.studentId) }
+          : user
+      ));
+    }
+
+    if (!isRejected && updatedApp.supervisorId) {
+      mockDb.saveUsers(mockDb.getUsers().map((user) =>
+        user.id === updatedApp.supervisorId
+          ? { ...user, assignedStudentIds: Array.from(new Set([...(user.assignedStudentIds || []), app.studentId])) }
+          : user
+      ));
+      getOrCreateConversation(app.studentId, updatedApp.supervisorId);
+    }
+
+    if (isAccepted) {
+      const acceptances = mockDb.getStudentAcceptance();
+      if (!acceptances.some((item) => item.studentId === app.studentId && item.internshipTitle === app.internshipTitle)) {
+        mockDb.saveStudentAcceptance([
+          {
+            id: makeId('accept'),
+            studentId: app.studentId,
+            studentName: app.studentName,
+            companyName: app.companyName,
+            internshipTitle: app.internshipTitle,
+            status: 'approved',
+            documentUrl: '#note-acceptation',
+            issueDate: new Date().toISOString().slice(0, 10),
+            receivedAt: nowIso
+          },
+          ...acceptances
+        ]);
+      }
+    }
+
+    const student = updatedStudents.find((item) => item.id === app.studentId);
+    if (student) {
+      const accepted = [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(status);
+      const rejected = status === ApplicationStatus.REJECTED;
+      const notificationTitle = accepted
+        ? 'Compte etudiant active'
+        : rejected
+          ? 'Demande de stage refusee'
+          : 'Mise a jour candidature';
+      const notificationMessage = accepted
+        ? 'Votre demande de stage a ete acceptee. Votre compte est maintenant active et pret a etre utilise. Vous pouvez vous connecter pour acceder a votre espace etudiant.'
+        : rejected
+          ? 'Votre demande de stage n a pas ete retenue par l entreprise. Votre compte sera supprime automatiquement dans un delai de 24 heures. Vos informations resteront archivees.'
+          : `Votre demande est en cours d examen par l entreprise. ${notes}`;
+      mockDb.addNotification(student.userId, notificationTitle, notificationMessage);
+    }
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_STATUT_MAJ', `Candidature #${id} mise a jour: ${status}`);
     loadAllData(true);
+    showToast('Statut de candidature mis a jour.', 'success');
   };
 
   const markNotificationAsRead = (id: string) => {
-    const allNotifs = mockDb.getNotifications();
-    const updated = allNotifs.map(n => n.id === id ? { ...n, read: true } : n);
-    mockDb.saveNotifications(updated);
+    mockDb.saveNotifications(mockDb.getNotifications().map((notif) => notif.id === id ? { ...notif, read: true } : notif));
     loadAllData(true);
   };
 
   const toggleFavoriteInternship = (id: string) => {
     if (!studentProfile) return;
-    let favs = [...(studentProfile.favoriteInternships || [])];
-    if (favs.includes(id)) {
-      favs = favs.filter(x => x !== id);
-    } else {
-      favs.push(id);
-    }
-    updateStudentProfile({ favoriteInternships: favs });
+    const favorites = studentProfile.favoriteInternships || [];
+    updateStudentProfile({ favoriteInternships: favorites.includes(id) ? favorites.filter((item) => item !== id) : [...favorites, id] });
   };
 
   const suspendUser = (id: string) => {
-    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
-    const allUsers = mockDb.getUsers();
-    const updated = allUsers.map(u => u.id === id ? { ...u, status: 'suspended' as const } : u);
-    mockDb.saveUsers(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'COMPTE_SUSPENSION', `Suspension de l'utilisateur #${id}`);
+    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    mockDb.saveUsers(mockDb.getUsers().map((user) => user.id === id ? { ...user, status: 'suspended' as const } : user));
     loadAllData(true);
   };
 
   const reactivateUser = (id: string) => {
-    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
-    const allUsers = mockDb.getUsers();
-    const updated = allUsers.map(u => u.id === id ? { ...u, status: 'active' as const } : u);
-    mockDb.saveUsers(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'COMPTE_REACTIVATION', `Réactivation de l'utilisateur #${id}`);
+    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    mockDb.saveUsers(mockDb.getUsers().map((user) => user.id === id ? { ...user, status: 'active' as const } : user));
     loadAllData(true);
   };
 
   const createUserByAdmin = (userData: Omit<User, 'id' | 'createdAt'>) => {
-    if (!currentUser || !(currentUser.role === RoleType.ADMIN || currentUser.role === RoleType.SUPERVISOR)) return;
-    const allUsers = mockDb.getUsers();
-    if (allUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase())) {
-      throw new Error('Cet email est déjà pris.');
+    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
+    if (mockDb.getUsers().some((user) => user.email.toLowerCase() === userData.email.toLowerCase())) {
+      throw new Error('Cet email est deja pris.');
     }
-
-    const newUser: User = {
-      ...userData,
-      id: `user-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedUsers = [...allUsers, newUser];
-    mockDb.saveUsers(updatedUsers);
-
-    if (userData.role === RoleType.STUDENT) {
-      const allStudents = mockDb.getStudents();
-      const newStudent: StudentProfile = {
-        id: `student-${Date.now()}`,
-        userId: newUser.id,
-        name: userData.name,
-        email: userData.email,
-        phone: '',
-        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        skills: [],
-        education: '',
-        favoriteInternships: []
-      };
-      mockDb.saveStudents([...allStudents, newStudent]);
-    } else if (userData.role === RoleType.COMPANY) {
-      const allComp = mockDb.getCompanies();
-      const newComp: CompanyProfile = {
-        id: `company-${Date.now()}`,
-        userId: newUser.id,
-        name: userData.name,
-        email: userData.email,
-        logoUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=150&q=80',
-        sector: 'Non désigné',
-        address: '',
-        contactName: userData.name,
-        contactEmail: userData.email,
-        contactPhone: '',
-        description: ''
-      };
-      mockDb.saveCompanies([...allComp, newComp]);
-    }
-
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'COMPTE_CREE_ADMIN', `Création admin du compte #${newUser.id}`);
+    mockDb.saveUsers([{ ...userData, id: makeId('user'), createdAt: new Date().toISOString() }, ...mockDb.getUsers()]);
     loadAllData(true);
   };
 
-  const addDailyReport = (activity: string, date: string, hoursWorked: number) => {
+  const addDailyReport = (activity: string, date: string, hoursWorked: number, details: Partial<DailyReport> = {}) => {
     if (!currentUser) return;
-    const studentProf = students.find(s => s.userId === currentUser.id);
-    if (!studentProf) return;
-
-    const newReport: DailyReport = {
-      id: `report-${Date.now()}`,
-      studentId: studentProf.id,
-      studentName: studentProf.name,
+    const profile = mockDb.getStudents().find((student) => student.userId === currentUser.id);
+    if (!profile || profile.isArchived) {
+      showToast('Votre compte de stage n est pas actif.', 'error');
+      return;
+    }
+    const report: DailyReport = {
+      id: makeId('report'),
+      studentId: profile.id,
+      studentName: profile.name,
       date,
+      title: details.title || 'Rapport quotidien',
       activity,
+      difficulties: details.difficulties,
+      skillsUsed: details.skillsUsed,
+      attachmentName: details.attachmentName,
       hoursWorked,
       status: 'pending',
       createdAt: new Date().toISOString()
     };
-
-    const updated = [newReport, ...dailyReports];
-    mockDb.saveDailyReports(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'RAPPORT_JOURNALIER_CREE', `Création du rapport journalier pour le ${date}`);
+    mockDb.saveDailyReports([report, ...mockDb.getDailyReports()]);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'RAPPORT_CREE', `Rapport cree pour le ${date}`);
     loadAllData(true);
-    showToast("Votre rapport journalier a été soumis !", "success");
+    showToast('Rapport soumis au superviseur.', 'success');
+  };
+
+  const canTouchStudent = (student?: StudentProfile) => {
+    if (!currentUser || !student) return false;
+    if (currentUser.role === RoleType.ADMIN) return true;
+    if (currentUser.role === RoleType.COMPANY) return student.companyId === companyProfile?.id;
+    if (currentUser.role === RoleType.SUPERVISOR) return isOfficiallyAssignedToSupervisor(student, currentUser);
+    return student.userId === currentUser.id;
   };
 
   const updateDailyReportByAdmin = (id: string, updates: Partial<DailyReport>) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-
-    const updated = dailyReports.map(r => {
-      if (r.id === id) {
-        return { ...r, ...updates };
-      }
-      return r;
-    });
-
-    mockDb.saveDailyReports(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'RAPPORT_JOURNALIER_MAJ', `Modification admin du rapport quotidien #${id}`);
+    if (!currentUser) return;
+    const report = mockDb.getDailyReports().find((item) => item.id === id);
+    const student = mockDb.getStudents().find((item) => item.id === report?.studentId);
+    if (!canTouchStudent(student)) {
+      showToast('Acces interdit pour ce rapport.', 'error');
+      return;
+    }
+    mockDb.saveDailyReports(mockDb.getDailyReports().map((item) =>
+      item.id === id ? { ...item, ...updates, reviewedBy: currentUser.id } : item
+    ));
     loadAllData(true);
-    showToast("Le rapport journalier a été mis à jour !", "success");
+    showToast('Rapport mis a jour.', 'success');
   };
 
-  const addStudentGrade = (studentId: string, studentName: string, subject: string, grade: number, comment?: string) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-
+  const addStudentGrade = (studentId: string, studentName: string, subject: string, grade: number, comment?: string, details: Partial<StudentGrade> = {}) => {
+    if (!currentUser || grade < 0 || grade > 20) return;
+    const student = mockDb.getStudents().find((item) => item.id === studentId);
+    if (!canTouchStudent(student)) {
+      showToast('Acces interdit pour noter cet etudiant.', 'error');
+      return;
+    }
     const newGrade: StudentGrade = {
-      id: `grade-${Date.now()}`,
+      id: makeId('grade'),
       studentId,
       studentName,
+      supervisorId: currentUser.role === RoleType.SUPERVISOR ? currentUser.id : details.supervisorId,
+      companyId: student?.companyId,
       subject,
+      criterion: details.criterion || subject,
       grade,
       maxGrade: 20,
-      gradedBy: `${currentUser.name} (Admin)`,
+      gradedBy: `${currentUser.name}`,
       comment,
+      reportId: details.reportId,
+      attendanceId: details.attendanceId,
       createdAt: new Date().toISOString()
     };
-
-    const updated = [newGrade, ...studentGrades];
-    mockDb.saveStudentGrades(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'NOTE_ATTRIBUEE', `Attribution de la cote (${grade}/20) à ${studentName} en ${subject}`);
+    mockDb.saveStudentGrades([newGrade, ...mockDb.getStudentGrades()]);
     loadAllData(true);
-    showToast(`Note de ${grade}/20 attribuée à ${studentName} !`, "success");
+    showToast('Note attribuee.', 'success');
   };
 
   const updateStudentGrade = (id: string, updates: Partial<StudentGrade>) => {
-    if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-
-    const updated = studentGrades.map(g => {
-      if (g.id === id) {
-        return { ...g, ...updates, gradedBy: `${currentUser.name} (Admin)` };
-      }
-      return g;
-    });
-
-    mockDb.saveStudentGrades(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'NOTE_MAJ', `Mise à jour admin de la note #${id}`);
+    if (!currentUser) return;
+    mockDb.saveStudentGrades(mockDb.getStudentGrades().map((grade) => grade.id === id ? { ...grade, ...updates } : grade));
     loadAllData(true);
-    showToast("La note de l'étudiant a été modifiée !", "success");
   };
 
   const updateAcceptanceStatus = (id: string, status: 'pending' | 'approved' | 'rejected') => {
-    const updated = studentAcceptances.map(a => {
-      if (a.id === id) {
-        return { ...a, status, issueDate: status === 'approved' ? new Date().toISOString().split('T')[0] : a.issueDate };
-      }
-      return a;
-    });
-
-    mockDb.saveStudentAcceptance(updated);
-    if (currentUser) {
-      mockDb.addAuditLog(currentUser.id, currentUser.name, 'DECISION_ACCEPTATION', `Le statut de la note d'acceptation #${id} est désormais ${status}`);
-    }
+    mockDb.saveStudentAcceptance(mockDb.getStudentAcceptance().map((acceptance) =>
+      acceptance.id === id
+        ? { ...acceptance, status, issueDate: status === 'approved' ? new Date().toISOString().slice(0, 10) : acceptance.issueDate }
+        : acceptance
+    ));
     loadAllData(true);
-    showToast(`Le statut de la note d'acceptation a été modifié.`, "success");
   };
 
   const addPartnerCompanyByAdmin = (companyData: Omit<CompanyProfile, 'id'>) => {
     if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-    const allComp = mockDb.getCompanies();
-    const newComp: CompanyProfile = {
-      ...companyData,
-      id: `company-${Date.now()}`
-    };
-    mockDb.saveCompanies([...allComp, newComp]);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'PARTENAIRE_AJOUT', `Ajout d'une entreprise partenaire : ${newComp.name}`);
+    const id = makeId('company');
+    mockDb.saveCompanies([{ ...companyData, id, departments: buildCompanyDefaults(id) }, ...mockDb.getCompanies()]);
     loadAllData(true);
-    showToast(`Entreprise ${newComp.name} ajoutée avec succès !`, 'success');
   };
 
   const updatePartnerCompanyByAdmin = (id: string, updates: Partial<CompanyProfile>) => {
     if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-    const allComp = mockDb.getCompanies();
-    const updated = allComp.map(c => c.id === id ? { ...c, ...updates } : c);
-    mockDb.saveCompanies(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'PARTENAIRE_MAJ', `Mise à jour de l'entreprise partenaire #${id}`);
+    mockDb.saveCompanies(mockDb.getCompanies().map((company) => company.id === id ? { ...company, ...updates } : company));
     loadAllData(true);
-    showToast(`Entreprise mise à jour avec succès !`, 'success');
   };
 
   const deletePartnerCompanyByAdmin = (id: string) => {
     if (!currentUser || currentUser.role !== RoleType.ADMIN) return;
-    const allComp = mockDb.getCompanies();
-    const targetComp = allComp.find(c => c.id === id);
-    if (!targetComp) return;
-    const updated = allComp.filter(c => c.id !== id);
-    mockDb.saveCompanies(updated);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'PARTENAIRE_SUPPRESSION', `Suppression de l'entreprise partenaire : ${targetComp.name}`);
+    mockDb.saveCompanies(mockDb.getCompanies().filter((company) => company.id !== id));
     loadAllData(true);
-    showToast(`Entreprise partenaire supprimée !`, 'success');
   };
 
-  // 📝 Nouvelle fonction persistée pour la création des Maîtres de stage par les Entreprises
-  const createSupervisorAccount = (name: string, email: string, password = 'password123') => {
+  const createSupervisorAccount = (input: SupervisorInput | string, email?: string, password = 'password123', details: Partial<SupervisorInput> = {}) => {
     if (!currentUser || currentUser.role !== RoleType.COMPANY || !companyProfile) {
-      showToast("Action non autorisée. Seule une entreprise peut créer un maître de stage.", "error");
+      showToast('Seule une entreprise peut creer un superviseur.', 'error');
+      return;
+    }
+    const payload: SupervisorInput = typeof input === 'string'
+      ? { name: input, email: email || '', password, ...details }
+      : input;
+    if (!payload.name || !payload.email) {
+      showToast('Nom et email du superviseur obligatoires.', 'error');
+      return;
+    }
+    if (mockDb.getUsers().some((user) => user.email.toLowerCase() === payload.email.toLowerCase())) {
+      showToast('Cette adresse email existe deja.', 'error');
       return;
     }
 
-    const allUsers = mockDb.getUsers();
-    const emailExists = allUsers.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      showToast("Cette adresse email est déjà utilisée par un autre compte.", "error");
-      return;
-    }
-
-    const newSupervisor: User = {
-      id: `user-sup-${Date.now()}`,
-      name,
-      email,
+    const supervisor: User = {
+      id: makeId('user-sup'),
+      name: payload.name,
+      email: payload.email,
       role: RoleType.SUPERVISOR,
       status: 'active',
       createdAt: new Date().toISOString(),
-      companyId: companyProfile.id
+      companyId: companyProfile.id,
+      phone: payload.phone,
+      passwordHash: hashPassword(payload.password || password),
+      position: payload.position || 'Maitre de stage',
+      departmentId: payload.departmentId,
+      departmentName: payload.departmentName,
+      skills: payload.skills || [],
+      assignedStudentIds: payload.assignedStudentIds || []
     };
-
-    mockDb.saveUsers([...allUsers, newSupervisor]);
-    mockDb.addAuditLog(currentUser.id, currentUser.name, 'MAITRE_STAGE_CREE', `Création du maître de stage : ${name} pour l'entreprise ${companyProfile.name}`);
+    mockDb.saveUsers([supervisor, ...mockDb.getUsers()]);
+    (payload.assignedStudentIds || []).forEach((studentId) => assignStudentToSupervisor(supervisor.id, studentId));
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'SUPERVISEUR_CREE', `Creation du superviseur ${payload.name}`);
     loadAllData(true);
-    showToast(`Le compte Maître de stage pour ${name} a été généré avec succès !`, "success");
+    showToast('Superviseur cree avec succes.', 'success');
+  };
+
+  const updateSupervisorAccount = (id: string, updates: Partial<SupervisorInput>) => {
+    if (!currentUser || currentUser.role !== RoleType.COMPANY || !companyProfile) return;
+    const supervisor = mockDb.getUsers().find((user) => user.id === id && user.role === RoleType.SUPERVISOR);
+    if (!supervisor || supervisor.companyId !== companyProfile.id) {
+      showToast('Superviseur introuvable pour votre entreprise.', 'error');
+      return;
+    }
+    const allowedAssignedIds = (updates.assignedStudentIds || []).filter((studentId) => {
+      const student = mockDb.getStudents().find((item) => item.id === studentId);
+      return Boolean(
+        student &&
+        student.companyId === companyProfile.id &&
+        !student.isArchived &&
+        [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(student.status || ApplicationStatus.PENDING)
+      );
+    });
+    mockDb.saveUsers(mockDb.getUsers().map((user) =>
+      user.id === id
+        ? {
+            ...user,
+            name: updates.name || user.name,
+            email: updates.email || user.email,
+            phone: updates.phone ?? user.phone,
+            position: updates.position ?? user.position,
+            departmentId: updates.departmentId ?? user.departmentId,
+            departmentName: updates.departmentName ?? user.departmentName,
+            skills: updates.skills ?? user.skills,
+            assignedStudentIds: updates.assignedStudentIds ? allowedAssignedIds : user.assignedStudentIds
+          }
+        : user
+    ));
+    if (updates.assignedStudentIds) {
+      mockDb.saveStudents(mockDb.getStudents().map((student) => {
+        if (allowedAssignedIds.includes(student.id)) return { ...student, supervisorId: id };
+        if (student.supervisorId === id) return { ...student, supervisorId: undefined };
+        return student;
+      }));
+    }
+    loadAllData(true);
+    showToast('Superviseur mis a jour.', 'success');
+  };
+
+  const assignStudentToSupervisor = (supervisorId: string, studentId?: string) => {
+    if (!currentUser || !studentId) return;
+    const supervisor = mockDb.getUsers().find((user) => user.id === supervisorId && user.role === RoleType.SUPERVISOR);
+    const student = mockDb.getStudents().find((item) => item.id === studentId);
+    const allowedStatuses = [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP];
+    if (!supervisor || !student || student.isArchived || !allowedStatuses.includes(student.status || ApplicationStatus.PENDING)) {
+      showToast('Selection invalide: seuls les etudiants acceptes ou en stage sont assignables.', 'error');
+      return;
+    }
+    if (currentUser.role === RoleType.COMPANY && (supervisor.companyId !== companyProfile?.id || student.companyId !== companyProfile?.id)) {
+      showToast('Le superviseur et l etudiant doivent appartenir a votre entreprise.', 'error');
+      return;
+    }
+
+    mockDb.saveStudents(mockDb.getStudents().map((item) => item.id === studentId ? { ...item, supervisorId } : item));
+    mockDb.saveUsers(mockDb.getUsers().map((user) =>
+      user.role === RoleType.SUPERVISOR
+        ? {
+            ...user,
+            assignedStudentIds: user.id === supervisorId
+              ? Array.from(new Set([...(user.assignedStudentIds || []), studentId]))
+              : (user.assignedStudentIds || []).filter((id) => id !== studentId)
+          }
+        : user
+    ));
+    getOrCreateConversation(studentId, supervisorId);
+    mockDb.addAuditLog(currentUser.id, currentUser.name, 'AFFECTATION_ETUDIANT', `${student.name} assigne a ${supervisor.name}`);
+    loadAllData(true);
+    showToast('Etudiant assigne au superviseur.', 'success');
+  };
+
+  const addAttendanceRecord = (record: Omit<AttendanceRecord, 'id' | 'studentId' | 'studentName' | 'companyId' | 'supervisorId' | 'status' | 'createdAt'>) => {
+    if (!currentUser) return;
+    const profile = mockDb.getStudents().find((student) => student.userId === currentUser.id);
+    const supervisor = profile?.supervisorId
+      ? mockDb.getUsers().find((user) => user.id === profile.supervisorId && user.role === RoleType.SUPERVISOR)
+      : undefined;
+    if (!profile || !isOfficiallyAssignedToSupervisor(profile, supervisor)) {
+      showToast('Votre presence ne peut etre deposee qu apres acceptation et assignation a un superviseur.', 'error');
+      return;
+    }
+    const existing = mockDb.getAttendanceRecords().find((item) => item.studentId === profile.id && item.date === record.date);
+    const attendance: AttendanceRecord = {
+      id: existing?.id || makeId('attendance'),
+      studentId: profile.id,
+      studentName: profile.name,
+      companyId: profile.companyId,
+      supervisorId: profile.supervisorId,
+      date: record.date,
+      arrivalTime: record.arrivalTime,
+      departureTime: record.departureTime,
+      status: 'en_attente',
+      comment: record.comment,
+      createdAt: existing?.createdAt || new Date().toISOString()
+    };
+    mockDb.saveAttendanceRecords([attendance, ...mockDb.getAttendanceRecords().filter((item) => item.id !== attendance.id)]);
+    loadAllData(true);
+    showToast(existing ? 'Presence mise a jour et renvoyee pour validation.' : 'Presence signalee au superviseur.', 'success');
+  };
+
+  const reviewAttendanceRecord = (id: string, status: 'validee' | 'refusee', comment?: string) => {
+    if (!currentUser) return;
+    const attendance = mockDb.getAttendanceRecords().find((item) => item.id === id);
+    const student = mockDb.getStudents().find((item) => item.id === attendance?.studentId);
+    if (!canTouchStudent(student)) {
+      showToast('Acces interdit pour cette presence.', 'error');
+      return;
+    }
+    mockDb.saveAttendanceRecords(mockDb.getAttendanceRecords().map((item) =>
+      item.id === id ? { ...item, status, comment, reviewedBy: currentUser.id } : item
+    ));
+    loadAllData(true);
+    showToast('Presence mise a jour.', 'success');
+  };
+
+  function getOrCreateConversation(studentId: string, supervisorId: string) {
+    const student = mockDb.getStudents().find((item) => item.id === studentId);
+    const supervisor = mockDb.getUsers().find((user) => user.id === supervisorId && user.role === RoleType.SUPERVISOR);
+    if (!student || !isOfficiallyAssignedToSupervisor(student, supervisor)) return '';
+    const existing = mockDb.getConversations().find((conversation) => conversation.studentId === studentId && conversation.supervisorId === supervisorId);
+    if (existing) return existing.id;
+    const conversation: Conversation = {
+      id: makeId('conversation'),
+      companyId: student?.companyId,
+      studentId,
+      supervisorId,
+      subject: 'Suivi du stage',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    mockDb.saveConversations([conversation, ...mockDb.getConversations()]);
+    return conversation.id;
+  }
+
+  const sendMessage = (conversationId: string, body: string, attachmentName?: string) => {
+    if (!currentUser || !body.trim()) return;
+    const conversation = mockDb.getConversations().find((item) => item.id === conversationId);
+    if (!conversation) return;
+    const student = mockDb.getStudents().find((item) => item.id === conversation.studentId);
+    const allowed =
+      currentUser.id === student?.userId ||
+      currentUser.id === conversation.supervisorId ||
+      (currentUser.role === RoleType.COMPANY && student?.companyId === companyProfile?.id);
+    if (!allowed) {
+      showToast('Acces interdit pour cette conversation.', 'error');
+      return;
+    }
+    const message: Message = {
+      id: makeId('message'),
+      conversationId,
+      senderId: currentUser.id,
+      senderRole: currentUser.role,
+      body,
+      attachmentName,
+      createdAt: new Date().toISOString()
+    };
+    mockDb.saveMessages([...mockDb.getMessages(), message]);
+    mockDb.saveConversations(mockDb.getConversations().map((item) =>
+      item.id === conversationId ? { ...item, updatedAt: message.createdAt } : item
+    ));
+    loadAllData(true);
   };
 
   return (
-    <AppContext.Provider value={{
-      currentUser,
-      studentProfile,
-      companyProfile,
-      users,
-      students,
-      companies,
-      internships,
-      applications,
-      notifications,
-      auditLogs,
-      toasts,
-      dailyReports,
-      studentGrades,
-      studentAcceptances,
-      showToast,
-      removeToast,
-      login,
-      logout,
-      register,
-      updateStudentProfile,
-      updateCompanyProfile,
-      createInternship,
-      updateInternship,
-      validateInternship,
-      applyToInternship,
-      updateApplicationStatus,
-      markNotificationAsRead,
-      toggleFavoriteInternship,
-      suspendUser,
-      reactivateUser,
-      createUserByAdmin,
-      addDailyReport,
-      updateDailyReportByAdmin,
-      addStudentGrade,
-      updateStudentGrade,
-      updateAcceptanceStatus,
-      addPartnerCompanyByAdmin,
-      updatePartnerCompanyByAdmin,
-      deletePartnerCompanyByAdmin,
-      createSupervisorAccount,
-      assignStudentToSupervisor // Superviseur peut gérer les affectations
-    }}>
+    <AppContext.Provider
+      value={{
+        currentUser,
+        studentProfile,
+        companyProfile,
+        users,
+        students,
+        companies,
+        internships,
+        applications,
+        notifications,
+        auditLogs,
+        toasts,
+        dailyReports,
+        studentGrades,
+        studentAcceptances,
+        attendanceRecords,
+        conversations,
+        messages,
+        archives,
+        showToast,
+        removeToast,
+        login,
+        logout,
+        register,
+        updateStudentProfile,
+        updateCompanyProfile,
+        createInternship,
+        updateInternship,
+        validateInternship,
+        applyToInternship,
+        updateApplicationStatus,
+        markNotificationAsRead,
+        toggleFavoriteInternship,
+        suspendUser,
+        reactivateUser,
+        createUserByAdmin,
+        addDailyReport,
+        updateDailyReportByAdmin,
+        addStudentGrade,
+        updateStudentGrade,
+        updateAcceptanceStatus,
+        addPartnerCompanyByAdmin,
+        updatePartnerCompanyByAdmin,
+        deletePartnerCompanyByAdmin,
+        createSupervisorAccount,
+        updateSupervisorAccount,
+        assignStudentToSupervisor,
+        addAttendanceRecord,
+        reviewAttendanceRecord,
+        sendMessage,
+        getOrCreateConversation
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
@@ -770,7 +1122,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error('useApp must be used within AppProvider');
   }
   return context;
 };

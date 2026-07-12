@@ -11,7 +11,9 @@ import ReportsPage from './pages/reports/ReportsPage';
 import SystemLogs from './pages/settings/SystemLogs';
 import PartnersPage from './pages/partners/PartnersPage';
 import CompanySupervisors from './pages/settings/CompanySupervisors';
+import ArchivedStudents from './pages/settings/ArchivedStudents';
 import { CheckCircle, AlertOctagon, Info, X } from 'lucide-react';
+import { RoleType } from './types';
 
 
 function ToastContainer() {
@@ -61,8 +63,14 @@ function MainAppContent() {
   useEffect(() => {
     if (currentUser) {
       // Si l'utilisateur est un étudiant, on restreint ses pages autorisées
-      if (currentUser.role === 'student') {
-        const allowedViews = ['dashboard', 'internships', 'profile'];
+      if (currentUser.role === RoleType.STUDENT) {
+        const allowedViews = ['dashboard', 'profile'];
+        if (!allowedViews.includes(currentView)) {
+          setCurrentView('dashboard');
+        }
+      }
+      if (currentUser.role === RoleType.SUPERVISOR) {
+        const allowedViews = ['dashboard', 'reports', 'profile'];
         if (!allowedViews.includes(currentView)) {
           setCurrentView('dashboard');
         }
@@ -87,16 +95,26 @@ function MainAppContent() {
 
   // Rendu des vues avec contrôle strict des rôles applicatifs
   const renderViewContent = () => {
-    if (currentUser.role === 'student') {
+    if (currentUser.role === RoleType.STUDENT) {
       switch (currentView) {
         case 'dashboard':
           return <Dashboard onViewChange={setCurrentView} />;
-        case 'internships':
-          return <InternshipsList />;
         case 'profile':
           return <ProfileSettings />;
         default:
           return <Dashboard onViewChange={setCurrentView} />;
+      }
+    }
+
+    if (currentUser.role === RoleType.SUPERVISOR) {
+      switch (currentView) {
+        case 'dashboard':
+        case 'reports':
+          return <ReportsPage />;
+        case 'profile':
+          return <ProfileSettings />;
+        default:
+          return <ReportsPage />;
       }
     }
 
@@ -115,6 +133,8 @@ function MainAppContent() {
         return <ReportsPage />;
       case 'supervisors':
         return <CompanySupervisors />;
+      case 'archives':
+        return <ArchivedStudents />;
       case 'profile':
         return <ProfileSettings />;
       case 'system-logs':
@@ -126,7 +146,7 @@ function MainAppContent() {
 
 
   return (
-    <div className="bg-[#090d16] min-h-screen w-full text-slate-100 antialiased font-sans">
+    <div className="min-h-screen w-full text-slate-100 antialiased font-sans">
       <DashboardLayout currentView={currentView} onViewChange={setCurrentView}>
         {renderViewContent()}
       </DashboardLayout>

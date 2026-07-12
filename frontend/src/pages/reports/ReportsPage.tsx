@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { RoleType } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { ApplicationStatus } from '../../types';
+import { apiClient, type AppSnapshot } from '../../services/apiClient';
+import { buildExportSheets, buildPdfLines, exportPdf, exportWorkbook } from '../../services/exportFiles';
 import {
   Award,
   TrendingUp,
@@ -9,7 +11,10 @@ import {
   Briefcase,
   Users,
   FileText,
-  Download
+  Download,
+  CalendarCheck,
+  MessageSquare,
+  Send
 } from 'lucide-react';
 
 export default function ReportsPage({
@@ -20,19 +25,30 @@ export default function ReportsPage({
   const {
     internships,
     applications,
+    companies,
     users,
+    notifications,
+    auditLogs,
     showToast,
     currentUser,
     dailyReports,
     studentGrades,
     students,
     studentAcceptances,
+    attendanceRecords,
+    conversations,
+    messages,
+    archives,
     updateDailyReportByAdmin,
     addStudentGrade,
-    updateAcceptanceStatus
+    updateAcceptanceStatus,
+    reviewAttendanceRecord,
+    sendMessage,
+    getOrCreateConversation
   } = useApp();
 
   const [downloadingFormat, setDownloadingFormat] = useState<'pdf' | 'excel' | null>(null);
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
 
   // KPI computations
   const totalOffers = internships.length;
@@ -40,25 +56,60 @@ export default function ReportsPage({
   const pendingCount = internships.filter((i) => i.status === 'pending').length;
 
   const totalApps = applications.length;
-  const acceptedApps = applications.filter((a) => a.status === ApplicationStatus.ACCEPTED).length;
+  const acceptedApps = applications.filter((a) => [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(a.status)).length;
   const pendingApps = applications.filter((a) => a.status === ApplicationStatus.PENDING).length;
   const scheduledApps = applications.filter((a) => a.status === ApplicationStatus.INTERVIEW).length;
   const rejectedApps = applications.filter((a) => a.status === ApplicationStatus.REJECTED).length;
 
-  const triggerExport = (format: 'pdf' | 'excel', title: string) => {
+  const currentSnapshot: AppSnapshot = {
+    users,
+    students,
+    companies,
+    internships,
+    applications,
+    notifications,
+    auditLogs,
+    dailyReports,
+    studentGrades,
+    studentAcceptances,
+    attendanceRecords,
+    conversations,
+    messages,
+    archives
+  };
+
+  const triggerExport = async (format: 'pdf' | 'excel', title: string) => {
     setDownloadingFormat(format);
-    setTimeout(() => {
-      setDownloadingFormat(null);
+    try {
+      const snapshot = (await apiClient.getSnapshot()) || currentSnapshot;
+      if (format === 'pdf') {
+        exportPdf(`${title}.pdf`, 'Rapport des stages academiques', buildPdfLines(snapshot));
+      } else {
+        exportWorkbook(`${title}.xlsx`, buildExportSheets(snapshot));
+      }
       showToast(
-        `Exportation réussie ! Le fichier "${title}.${format === 'pdf' ? 'pdf' : 'xlsx'}" a été téléchargé avec succès.`,
+        `Exportation reussie. Le fichier "${title}.${format === 'pdf' ? 'pdf' : 'xlsx'}" a ete genere avec les donnees disponibles.`,
         'success'
       );
-    }, 1200);
+    } catch (error: any) {
+      showToast(error.message || "L'exportation a echoue.", 'error');
+    } finally {
+      setDownloadingFormat(null);
+    }
   };
 
   // Supervisor workspace (company-created supervisors)
   const activeSupervisorId =
     impersonateSupervisorId ?? (currentUser?.role === RoleType.SUPERVISOR ? currentUser.id : undefined);
+  const activeSupervisor = activeSupervisorId ? users.find((user) => user.id === activeSupervisorId && user.role === RoleType.SUPERVISOR) : undefined;
+  const supervisedStudents = activeSupervisor
+    ? students.filter((student) =>
+        !student.isArchived &&
+        [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(student.status || ApplicationStatus.PENDING) &&
+        student.supervisorId === activeSupervisor.id &&
+        (activeSupervisor.assignedStudentIds || []).includes(student.id)
+      )
+    : [];
 
   return (
     <div className="space-y-8 animate-fade-in text-xs md:text-sm">
@@ -131,12 +182,10 @@ export default function ReportsPage({
 
         {activeSupervisorId ? (
           <div className="space-y-4">
-            {students.filter((s) => s.supervisorId === activeSupervisorId).length === 0 ? (
+            {supervisedStudents.length === 0 ? (
               <p className="text-slate-500 text-sm">Aucun étudiant ne vous est assigné pour le moment.</p>
             ) : (
-              students
-                .filter((s) => s.supervisorId === activeSupervisorId)
-                .map((s) => (
+              supervisedStudents.map((s) => (
                   <div key={s.id} className="p-4 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <div>
@@ -185,6 +234,16 @@ export default function ReportsPage({
                                         className="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs hover:bg-emerald-700"
                                       >
                                         Valider
+                                      </button>
+                                    )}
+                                    {r.status !== 'rejected' && (
+                                      <button
+                                        onClick={() =>
+                                          updateDailyReportByAdmin(r.id, { status: 'rejected', supervisorComment: 'A completer puis soumettre a nouveau.' })
+                                        }
+                                        className="px-3 py-1.5 bg-rose-600 text-white rounded-md text-xs hover:bg-rose-700"
+                                      >
+                                        Refuser
                                       </button>
                                     )}
 
@@ -279,6 +338,101 @@ export default function ReportsPage({
                         </div>
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <h5 className="font-semibold flex items-center gap-2">
+                          <CalendarCheck className="h-4 w-4 text-blue-600" />
+                          Presences
+                        </h5>
+                        <div className="space-y-2 mt-2">
+                          {attendanceRecords.filter((record) => record.studentId === s.id).length === 0 ? (
+                            <p className="text-sm text-slate-500">Aucune presence signalee.</p>
+                          ) : (
+                            attendanceRecords
+                              .filter((record) => record.studentId === s.id)
+                              .map((record) => (
+                                <div key={record.id} className="p-2 bg-slate-50 rounded-md flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="font-semibold text-slate-900">{record.date}</div>
+                                    <div className="text-slate-600 text-[13px]">
+                                      Arrivee {record.arrivalTime}{record.departureTime ? ` - Sortie ${record.departureTime}` : ''}
+                                    </div>
+                                    {record.comment && <div className="text-[12px] text-slate-500">{record.comment}</div>}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-2">
+                                    <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${
+                                      record.status === 'validee' ? 'bg-emerald-100 text-emerald-800' :
+                                      record.status === 'refusee' ? 'bg-rose-100 text-rose-800' :
+                                      'bg-amber-100 text-amber-800'
+                                    }`}>
+                                      {record.status}
+                                    </span>
+                                    {record.status === 'en_attente' && (
+                                      <div className="flex gap-1">
+                                        <button onClick={() => reviewAttendanceRecord(record.id, 'validee')} className="px-2 py-1 bg-emerald-600 text-white rounded text-[11px]">Valider</button>
+                                        <button onClick={() => reviewAttendanceRecord(record.id, 'refusee', 'Presence refusee par le superviseur.')} className="px-2 py-1 bg-rose-600 text-white rounded text-[11px]">Refuser</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h5 className="font-semibold flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-indigo-600" />
+                          Conversation
+                        </h5>
+                        {(() => {
+                          const conversationId = getOrCreateConversation(s.id, activeSupervisorId);
+                          if (!conversationId) {
+                            return (
+                              <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                                Conversation disponible apres assignation officielle.
+                              </div>
+                            );
+                          }
+                          const threadMessages = messages.filter((message) => message.conversationId === conversationId);
+                          return (
+                            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+                              <div className="max-h-40 overflow-y-auto space-y-2">
+                                {threadMessages.length === 0 ? (
+                                  <p className="text-sm text-slate-500">Aucun message.</p>
+                                ) : (
+                                  threadMessages.map((message) => (
+                                    <div key={message.id} className="rounded bg-white p-2 text-[12px] text-slate-700 border border-slate-100">
+                                      <div className="font-bold text-slate-900">{message.senderRole}</div>
+                                      <div>{message.body}</div>
+                                      {message.attachmentName && <div className="text-slate-500 mt-1">Piece jointe: {message.attachmentName}</div>}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  value={messageDrafts[conversationId] || ''}
+                                  onChange={(event) => setMessageDrafts({ ...messageDrafts, [conversationId]: event.target.value })}
+                                  className="flex-1 rounded border border-slate-300 p-2 text-xs"
+                                  placeholder={`Message pour ${s.name}`}
+                                />
+                                <button
+                                  onClick={() => {
+                                    sendMessage(conversationId, messageDrafts[conversationId] || '');
+                                    setMessageDrafts({ ...messageDrafts, [conversationId]: '' });
+                                  }}
+                                  className="px-3 py-2 bg-indigo-600 text-white rounded text-xs font-bold"
+                                >
+                                  <Send className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 ))
             )}
@@ -290,9 +444,9 @@ export default function ReportsPage({
         )}
       </div>
 
-      {/* Minimal exports (kept) */}
+      {/* Exports */}
       <div className="bg-white p-6 rounded-xl border border-slate-205 shadow-xs space-y-4">
-        <h3 className="font-bold text-slate-800 text-sm">Téléchargements (simulés)</h3>
+        <h3 className="font-bold text-slate-800 text-sm">Téléchargements</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="p-4 bg-slate-50/60 border rounded-xl flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -385,4 +539,3 @@ function AddGradeForm({
     </div>
   );
 }
-

@@ -1,9 +1,13 @@
 import type {
   Application,
   AuditLog,
+  AttendanceRecord,
+  ArchiveRecord,
   CompanyProfile,
+  Conversation,
   DailyReport,
   Internship,
+  Message,
   Notification,
   StudentAcceptance,
   StudentGrade,
@@ -22,6 +26,10 @@ export interface AppSnapshot {
   dailyReports: DailyReport[];
   studentGrades: StudentGrade[];
   studentAcceptances: StudentAcceptance[];
+  attendanceRecords: AttendanceRecord[];
+  conversations: Conversation[];
+  messages: Message[];
+  archives: ArchiveRecord[];
 }
 
 const configuredBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
@@ -59,5 +67,9 @@ export const apiClient = {
       method: 'PUT',
       body: JSON.stringify(snapshot)
     });
+  },
+
+  async getSupervisorStudents(supervisorId: string): Promise<StudentProfile[]> {
+    return request<StudentProfile[]>(`/supervisors/${encodeURIComponent(supervisorId)}/students`);
   }
 };

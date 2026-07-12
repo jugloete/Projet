@@ -5,14 +5,39 @@ export enum RoleType {
   SUPERVISOR = 'SUPERVISOR'
 }
 
+export enum ApplicationStatus {
+  PENDING = 'en_attente',
+  INTERVIEW = 'entretien_demande',
+  ACCEPTED = 'accepte',
+  REJECTED = 'rejete',
+  IN_INTERNSHIP = 'en_stage',
+  COMPLETED = 'termine',
+  ARCHIVED = 'archive'
+}
+
+export type StudentStageStatus = ApplicationStatus;
+
+export interface Department {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: RoleType;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'archived';
   createdAt: string;
   companyId?: string;
+  phone?: string;
+  passwordHash?: string;
+  position?: string;
+  departmentId?: string;
+  departmentName?: string;
+  skills?: string[];
+  assignedStudentIds?: string[];
 }
 
 export interface StudentProfile {
@@ -28,8 +53,28 @@ export interface StudentProfile {
   bio?: string;
   skills: string[];
   education: string;
-  favoriteInternships: string[]; // internship IDs
-  supervisorId?: string; // Identifiant du maître de stage affecté
+  favoriteInternships: string[];
+  university?: string;
+  faculty?: string;
+  level?: string;
+  field?: string;
+  specialty?: string;
+  companyId?: string;
+  companyName?: string;
+  departmentId?: string;
+  departmentName?: string;
+  supervisorId?: string;
+  applicationStatus?: StudentStageStatus;
+  status?: StudentStageStatus;
+  acceptanceNote?: string;
+  interviewNote?: string;
+  rejectionReason?: string;
+  rejectedAt?: string;
+  startDate?: string;
+  endDate?: string;
+  expiresAt?: string;
+  archivedAt?: string;
+  isArchived?: boolean;
 }
 
 export interface CompanyProfile {
@@ -44,6 +89,10 @@ export interface CompanyProfile {
   contactEmail: string;
   contactPhone: string;
   description: string;
+  departments?: Department[];
+  requiredSkills?: string[];
+  acceptedSpecialties?: string[];
+  eligibilityCriteria?: string;
 }
 
 export interface Internship {
@@ -54,25 +103,19 @@ export interface Internship {
   title: string;
   description: string;
   city: string;
-  duration: string; // e.g. "6 mois"
-  remuneration: string; // e.g. "1200 $ / mois"
-  deadline: string; // YYYY-MM-DD
+  duration: string;
+  remuneration: string;
+  deadline: string;
   skillsRequired: string[];
   status: 'pending' | 'published' | 'archived' | 'rejected';
   createdAt: string;
-}
-
-export enum ApplicationStatus {
-  PENDING = 'En attente',
-  ACCEPTED = 'Acceptée',
-  REJECTED = 'Refusée',
-  INTERVIEW = 'Entretien programmé'
 }
 
 export interface Application {
   id: string;
   internshipId: string;
   internshipTitle: string;
+  companyId?: string;
   companyName: string;
   studentId: string;
   studentName: string;
@@ -82,6 +125,18 @@ export interface Application {
   coverLetter: string;
   status: ApplicationStatus;
   notes?: string;
+  departmentId?: string;
+  departmentName?: string;
+  specialty?: string;
+  interviewNote?: string;
+  acceptanceNote?: string;
+  rejectionReason?: string;
+  supervisorId?: string;
+  startDate?: string;
+  endDate?: string;
+  rejectedAt?: string;
+  archivedAt?: string;
+  expiresAt?: string;
   createdAt: string;
 }
 
@@ -108,11 +163,33 @@ export interface DailyReport {
   id: string;
   studentId: string;
   studentName: string;
-  date: string; // AAAA-MM-JJ
-  activity: string; // Description du travail journalier
+  date: string;
+  title?: string;
+  activity: string;
+  difficulties?: string;
+  skillsUsed?: string[];
+  attachmentName?: string;
   hoursWorked: number;
-  status: 'pending' | 'validated' | 'rejected';
+  status: 'pending' | 'reviewed' | 'validated' | 'rejected';
   adminComment?: string;
+  supervisorComment?: string;
+  reviewedBy?: string;
+  grade?: number;
+  createdAt: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  companyId?: string;
+  supervisorId?: string;
+  date: string;
+  arrivalTime: string;
+  departureTime?: string;
+  status: 'en_attente' | 'validee' | 'refusee';
+  comment?: string;
+  reviewedBy?: string;
   createdAt: string;
 }
 
@@ -120,10 +197,15 @@ export interface StudentGrade {
   id: string;
   studentId: string;
   studentName: string;
-  subject: string; // E.g., Assiduité, Rapport Hebdomadaire, Présentation, Note Industrielle
-  grade: number; // Cote obtenue
-  maxGrade: number; // Note maximale possible (ex: 20)
-  gradedBy: string; // Qui a évalué
+  supervisorId?: string;
+  companyId?: string;
+  reportId?: string;
+  attendanceId?: string;
+  subject: string;
+  criterion?: string;
+  grade: number;
+  maxGrade: number;
+  gradedBy: string;
   comment?: string;
   createdAt: string;
 }
@@ -135,8 +217,43 @@ export interface StudentAcceptance {
   companyName: string;
   internshipTitle: string;
   status: 'pending' | 'approved' | 'rejected';
-  documentUrl?: string; // Simulé
+  documentUrl?: string;
   issueDate?: string;
   receivedAt: string;
 }
 
+export interface Conversation {
+  id: string;
+  companyId?: string;
+  studentId: string;
+  supervisorId: string;
+  subject?: string;
+  relatedReportId?: string;
+  relatedAttendanceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderRole: RoleType;
+  body: string;
+  attachmentName?: string;
+  createdAt: string;
+}
+
+export interface ArchiveRecord {
+  id: string;
+  companyId?: string;
+  companyName?: string;
+  studentId: string;
+  studentName: string;
+  studentEmail?: string;
+  status: ApplicationStatus;
+  reason: 'rejected' | 'expired' | 'manual';
+  rejectionReason?: string;
+  archivedAt: string;
+  snapshot: Partial<StudentProfile>;
+}

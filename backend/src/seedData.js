@@ -21,6 +21,19 @@ const INITIAL_USERS = [
     createdAt: '2026-01-10T09:00:00Z'
   },
   {
+    id: 'user-supervisor-demo-1',
+    name: 'M. Christian Kabange (Superviseur demo)',
+    email: 'supervisor.demo@gecamines.cd',
+    role: 'SUPERVISOR',
+    status: 'active',
+    createdAt: '2026-06-01T09:00:00Z',
+    companyId: 'company-profile-1',
+    position: 'Maitre de stage',
+    departmentName: 'Maintenance',
+    skills: ['Maintenance', 'Securite industrielle'],
+    assignedStudentIds: ['student-profile-1']
+  },
+  {
     id: 'user-student-1',
     name: 'Sarah El Amrani',
     email: 'sarah.student@example.com',
@@ -555,6 +568,48 @@ const INITIAL_ACCEPTANCE = [
   }
 ];
 
+const INITIAL_ATTENDANCE = [
+  {
+    id: 'attendance-1',
+    studentId: 'student-profile-1',
+    studentName: 'Sarah El Amrani',
+    companyId: 'company-profile-1',
+    supervisorId: 'user-supervisor-demo-1',
+    date: '2026-06-18',
+    arrivalTime: '08:00',
+    departureTime: '16:00',
+    status: 'validee',
+    comment: 'Presence validee lors de la visite atelier.',
+    reviewedBy: 'user-supervisor-demo-1',
+    createdAt: '2026-06-18T16:05:00Z'
+  }
+];
+
+const INITIAL_CONVERSATIONS = [
+  {
+    id: 'conversation-1',
+    companyId: 'company-profile-1',
+    studentId: 'student-profile-1',
+    supervisorId: 'user-supervisor-demo-1',
+    subject: 'Suivi du stage',
+    createdAt: '2026-06-18T09:00:00Z',
+    updatedAt: '2026-06-18T09:15:00Z'
+  }
+];
+
+const INITIAL_MESSAGES = [
+  {
+    id: 'message-1',
+    conversationId: 'conversation-1',
+    senderId: 'user-supervisor-demo-1',
+    senderRole: 'SUPERVISOR',
+    body: 'Bienvenue Sarah. Deposez votre rapport quotidien avant la fin de chaque journee.',
+    createdAt: '2026-06-18T09:15:00Z'
+  }
+];
+
+const INITIAL_ARCHIVES = [];
+
 export const seedData = {
   users: INITIAL_USERS,
   students: INITIAL_STUDENTS,
@@ -565,5 +620,9 @@ export const seedData = {
   auditLogs: INITIAL_AUDIT_LOGS,
   dailyReports: INITIAL_DAILY_REPORTS,
   studentGrades: INITIAL_GRADES,
-  studentAcceptances: INITIAL_ACCEPTANCE
+  studentAcceptances: INITIAL_ACCEPTANCE,
+  attendanceRecords: INITIAL_ATTENDANCE,
+  conversations: INITIAL_CONVERSATIONS,
+  messages: INITIAL_MESSAGES,
+  archives: INITIAL_ARCHIVES
 };

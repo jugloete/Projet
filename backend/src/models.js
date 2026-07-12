@@ -22,7 +22,11 @@ export const models = {
   auditLogs: createCollectionModel('AuditLogSnapshot', 'audit_logs'),
   dailyReports: createCollectionModel('DailyReportSnapshot', 'daily_reports'),
   studentGrades: createCollectionModel('StudentGradeSnapshot', 'student_grades'),
-  studentAcceptances: createCollectionModel('StudentAcceptanceSnapshot', 'student_acceptances')
+  studentAcceptances: createCollectionModel('StudentAcceptanceSnapshot', 'student_acceptances'),
+  attendanceRecords: createCollectionModel('AttendanceRecordSnapshot', 'attendance_records'),
+  conversations: createCollectionModel('ConversationSnapshot', 'conversations'),
+  messages: createCollectionModel('MessageSnapshot', 'messages'),
+  archives: createCollectionModel('ArchiveSnapshot', 'archives')
 };
 
 export const collectionNames = Object.keys(models);

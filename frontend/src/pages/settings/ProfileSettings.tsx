@@ -13,8 +13,56 @@ import {
   Check, 
   Building2, 
   Code,
-  UserPlus
+  UserPlus,
+  Camera
 } from 'lucide-react';
+
+const MAX_PROFILE_PHOTO_SIZE = 5 * 1024 * 1024;
+const PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+const prepareProfilePhoto = (file: File) => new Promise<string>((resolve, reject) => {
+  const imageUrl = URL.createObjectURL(file);
+  const image = new Image();
+
+  image.onload = () => {
+    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+    const outputSize = Math.min(512, sourceSize);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context || !outputSize) {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error('Image invalide.'));
+      return;
+    }
+
+    canvas.width = outputSize;
+    canvas.height = outputSize;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, outputSize, outputSize);
+    context.drawImage(
+      image,
+      (image.naturalWidth - sourceSize) / 2,
+      (image.naturalHeight - sourceSize) / 2,
+      sourceSize,
+      sourceSize,
+      0,
+      0,
+      outputSize,
+      outputSize
+    );
+
+    URL.revokeObjectURL(imageUrl);
+    resolve(canvas.toDataURL('image/jpeg', 0.86));
+  };
+
+  image.onerror = () => {
+    URL.revokeObjectURL(imageUrl);
+    reject(new Error('Impossible de lire cette image.'));
+  };
+
+  image.src = imageUrl;
+});
 
 export default function ProfileSettings() {
   const { currentUser, studentProfile, companyProfile, updateStudentProfile, updateCompanyProfile } = useApp();
@@ -27,6 +75,9 @@ export default function ProfileSettings() {
   const [studBio, setStudBio] = useState(studentProfile?.bio || '');
   const [studCvName, setStudCvName] = useState(studentProfile?.cvName || '');
   const [studSkills, setStudSkills] = useState(studentProfile?.skills?.join(', ') || '');
+  const [studAvatarUrl, setStudAvatarUrl] = useState(studentProfile?.avatarUrl || '');
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
 
   // 2. COMPANY FORM WORKFLOW INPUTS
   const [compSector, setCompSector] = useState(companyProfile?.sector || '');
@@ -34,6 +85,10 @@ export default function ProfileSettings() {
   const [compContactName, setCompContactName] = useState(companyProfile?.contactName || '');
   const [compContactPhone, setCompContactPhone] = useState(companyProfile?.contactPhone || '');
   const [compDescription, setCompDescription] = useState(companyProfile?.description || '');
+  const [compDepartments, setCompDepartments] = useState(companyProfile?.departments?.map((department) => department.name).join(', ') || '');
+  const [compRequiredSkills, setCompRequiredSkills] = useState(companyProfile?.requiredSkills?.join(', ') || '');
+  const [compSpecialties, setCompSpecialties] = useState(companyProfile?.acceptedSpecialties?.join(', ') || '');
+  const [compEligibilityCriteria, setCompEligibilityCriteria] = useState(companyProfile?.eligibilityCriteria || '');
 
   // Supervisor creation inputs (for companies)
   const [supName, setSupName] = useState('');
@@ -43,6 +98,38 @@ export default function ProfileSettings() {
   const { createSupervisorAccount } = useApp();
 
   if (!currentUser) return null;
+
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!PROFILE_PHOTO_TYPES.includes(file.type)) {
+      setAvatarError('Choisissez une image JPG, PNG ou WebP.');
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_PHOTO_SIZE) {
+      setAvatarError('La photo ne peut pas dépasser 5 Mo.');
+      return;
+    }
+
+    setAvatarLoading(true);
+    setAvatarError('');
+    setSavingMsg('Enregistrement de la photo...');
+    try {
+      const avatarUrl = await prepareProfilePhoto(file);
+      updateStudentProfile({ avatarUrl });
+      setStudAvatarUrl(avatarUrl);
+      setSavingMsg('✓ Photo enregistrée avec succès !');
+      setTimeout(() => setSavingMsg(''), 2000);
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : 'Impossible de modifier la photo.');
+      setSavingMsg('');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
 
   const handleStudentSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +143,8 @@ export default function ProfileSettings() {
         education: studEducation,
         bio: studBio,
         cvName: studCvName,
-        skills: skillsArr
+        skills: skillsArr,
+        avatarUrl: studAvatarUrl || studentProfile.avatarUrl
       });
       setSavingMsg('✓ Informations enregistrées avec succès !');
       setTimeout(() => setSavingMsg(''), 2000);
@@ -73,7 +161,18 @@ export default function ProfileSettings() {
         address: compAddress,
         contactName: compContactName,
         contactPhone: compContactPhone,
-        description: compDescription
+        description: compDescription,
+        departments: compDepartments
+          .split(',')
+          .map((name, index) => name.trim())
+          .filter(Boolean)
+          .map((name, index) => ({
+            id: `${companyProfile?.id || currentUser.id}-dept-${index}-${name.toLowerCase().replace(/\s+/g, '-')}`,
+            name
+          })),
+        requiredSkills: compRequiredSkills.split(',').map((skill) => skill.trim()).filter(Boolean),
+        acceptedSpecialties: compSpecialties.split(',').map((specialty) => specialty.trim()).filter(Boolean),
+        eligibilityCriteria: compEligibilityCriteria
       });
       setSavingMsg('✓ Informations enregistrées avec succès !');
       setTimeout(() => setSavingMsg(''), 2000);
@@ -98,16 +197,36 @@ export default function ProfileSettings() {
       {currentUser.role === RoleType.STUDENT && studentProfile && (
         <form onSubmit={handleStudentSave} className="space-y-5">
           {/* Avatar & identity teaser */}
-          <div className="flex items-center space-x-4 p-4 bg-slate-50/50 rounded-xl border">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-slate-50/50 rounded-xl border">
             <img 
-              src={studentProfile.avatarUrl} 
+              src={studAvatarUrl || studentProfile.avatarUrl}
               alt={currentUser.name} 
               referrerPolicy="no-referrer"
               className="h-16 w-16 rounded-full object-cover ring-4 ring-slate-100"
             />
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-extrabold text-slate-800 text-sm md:text-base">{currentUser.name}</h3>
               <p className="text-xs text-slate-450 mt-0.5">{currentUser.email}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <label
+                  htmlFor="student-profile-photo"
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-700 transition-colors ${
+                    avatarLoading ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-slate-100'
+                  }`}
+                >
+                  <Camera className="h-4 w-4" />
+                  <span>{avatarLoading ? 'Traitement...' : 'Modifier la photo'}</span>
+                </label>
+                <input
+                  id="student-profile-photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={avatarLoading}
+                  onChange={handleAvatarChange}
+                />
+              </div>
+              {avatarError && <p className="mt-2 text-xs font-medium text-rose-600">{avatarError}</p>}
             </div>
           </div>
 
@@ -264,6 +383,49 @@ export default function ProfileSettings() {
               value={compDescription}
               onChange={(e) => setCompDescription(e.target.value)}
             ></textarea>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Departements disponibles</label>
+              <textarea
+                rows={3}
+                placeholder="Informatique, Finance, Maintenance"
+                className="w-full px-3 py-2 border rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                value={compDepartments}
+                onChange={(e) => setCompDepartments(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Competences recherchees</label>
+              <textarea
+                rows={3}
+                placeholder="React, Excel avance, Communication"
+                className="w-full px-3 py-2 border rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                value={compRequiredSkills}
+                onChange={(e) => setCompRequiredSkills(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Specialites acceptees</label>
+              <textarea
+                rows={3}
+                placeholder="Genie logiciel, Comptabilite, Reseaux"
+                className="w-full px-3 py-2 border rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                value={compSpecialties}
+                onChange={(e) => setCompSpecialties(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Criteres d'eligibilite</label>
+              <textarea
+                rows={3}
+                placeholder="CV obligatoire, niveau minimum, disponibilite..."
+                className="w-full px-3 py-2 border rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                value={compEligibilityCriteria}
+                onChange={(e) => setCompEligibilityCriteria(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="pt-4 border-t border-slate-100 flex justify-end">

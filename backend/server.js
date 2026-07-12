@@ -78,10 +78,38 @@ app.put('/api/snapshot', async (req, res, next) => {
   }
 });
 
+app.get('/api/supervisors/:id/students', async (req, res, next) => {
+  try {
+    const supervisor = await models.users.findOne({ id: req.params.id, role: 'SUPERVISOR' }).lean();
+    if (!supervisor) return res.status(404).json({ message: 'Superviseur introuvable.' });
+    const assignedIds = Array.isArray(supervisor.assignedStudentIds) ? supervisor.assignedStudentIds : [];
+    const rows = await models.students.find({
+      id: { $in: assignedIds },
+      supervisorId: req.params.id,
+      isArchived: { $ne: true },
+      status: { $in: ['accepte', 'en_stage'] }
+    }).lean();
+    res.json(rows.map(sanitizeDocument));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/:collection', async (req, res, next) => {
   try {
     const model = models[req.params.collection];
     if (!model) return res.status(404).json({ message: 'Collection introuvable.' });
+    if (req.params.collection === 'students' && req.query.supervisorId) {
+      const supervisor = await models.users.findOne({ id: req.query.supervisorId, role: 'SUPERVISOR' }).lean();
+      const assignedIds = Array.isArray(supervisor?.assignedStudentIds) ? supervisor.assignedStudentIds : [];
+      const rows = await model.find({
+        id: { $in: assignedIds },
+        supervisorId: req.query.supervisorId,
+        isArchived: { $ne: true },
+        status: { $in: ['accepte', 'en_stage'] }
+      }).lean();
+      return res.json(rows.map(sanitizeDocument));
+    }
     res.json((await model.find({}).lean()).map(sanitizeDocument));
   } catch (error) {
     next(error);

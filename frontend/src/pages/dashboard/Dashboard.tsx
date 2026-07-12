@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { RoleType, ApplicationStatus, DailyReport, StudentGrade, StudentAcceptance } from '../../types';
+import { exportPdf } from '../../services/exportFiles';
 import { 
   Briefcase, 
   Users, 
@@ -9,7 +10,6 @@ import {
   CheckCircle, 
   Clock, 
   XCircle, 
-  TrendingUp, 
   Hourglass,
   CalendarDays,
   MapPin,
@@ -43,7 +43,13 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
     dailyReports,
     studentGrades,
     studentAcceptances,
+    attendanceRecords,
+    conversations,
+    messages,
     addDailyReport,
+    addAttendanceRecord,
+    sendMessage,
+    getOrCreateConversation,
     updateDailyReportByAdmin,
     addStudentGrade,
     updateStudentGrade,
@@ -52,7 +58,7 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
   } = useApp();
 
   // Active sub-tabs for student and admin to keep navigation organized
-  const [studentTab, setStudentTab] = useState<'applications' | 'reports' | 'grades' | 'acceptance'>('applications');
+  const [studentTab, setStudentTab] = useState<'applications' | 'reports' | 'attendance' | 'messages' | 'grades' | 'acceptance'>('applications');
   const [adminTab, setAdminTab] = useState<'overview' | 'reports' | 'grades' | 'acceptance'>('overview');
 
   // Local Form state for creating daily reports
@@ -61,6 +67,13 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
     date: new Date().toISOString().split('T')[0],
     hoursWorked: 8
   });
+  const [attendanceForm, setAttendanceForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    arrivalTime: '08:00',
+    departureTime: '',
+    comment: ''
+  });
+  const [studentMessageDraft, setStudentMessageDraft] = useState('');
 
   // Local Form state for Admin adding/editing grades
   const [gradeForm, setGradeForm] = useState({
@@ -81,6 +94,16 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
 
   if (!currentUser) return null;
 
+  const statusLabel = (status: ApplicationStatus) => ({
+    [ApplicationStatus.PENDING]: 'En attente',
+    [ApplicationStatus.INTERVIEW]: 'Entretien demande',
+    [ApplicationStatus.ACCEPTED]: 'Accepte',
+    [ApplicationStatus.REJECTED]: 'Rejete',
+    [ApplicationStatus.IN_INTERNSHIP]: 'En stage',
+    [ApplicationStatus.COMPLETED]: 'Termine',
+    [ApplicationStatus.ARCHIVED]: 'Archive'
+  }[status] || status);
+
   // ----------------------------------------------------
   // 1. STUDENT SPACE
   // ----------------------------------------------------
@@ -90,21 +113,17 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
     
     // Stats computes
     const pendingApps = myApps.filter(a => a.status === ApplicationStatus.PENDING);
-    const acceptedApps = myApps.filter(a => a.status === ApplicationStatus.ACCEPTED);
+    const acceptedApps = myApps.filter(a => [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(a.status));
     const scheduledApps = myApps.filter(a => a.status === ApplicationStatus.INTERVIEW);
     
     // Student's reports, grades and acceptance files
     const myReports = dailyReports.filter(r => r.studentId === studentProf?.id);
     const myGrades = studentGrades.filter(g => g.studentId === studentProf?.id);
     const myAcceptance = studentAcceptances.filter(a => a.studentId === studentProf?.id);
-
-    // Dynamic AI Recommendations based on competencies
-    const recommendations = internships.filter(i => 
-      i.status === 'published' && 
-      (studentProf?.skills || []).some(skill => 
-        i.skillsRequired.map(s => s.toLowerCase()).includes(skill.toLowerCase())
-      )
-    ).slice(0, 3);
+    const myAttendance = attendanceRecords.filter(record => record.studentId === studentProf?.id);
+    const mySupervisorId = studentProf?.supervisorId;
+    const myConversationId = studentProf?.id && mySupervisorId ? getOrCreateConversation(studentProf.id, mySupervisorId) : '';
+    const myMessages = myConversationId ? messages.filter(message => message.conversationId === myConversationId) : [];
 
     // Handle daily report submissions
     const handleAddReport = (e: React.FormEvent) => {
@@ -119,6 +138,28 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
         date: new Date().toISOString().split('T')[0],
         hoursWorked: 8
       });
+    };
+
+    const handleAddAttendance = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!attendanceForm.arrivalTime) {
+        showToast("Veuillez renseigner l'heure d'arrivee.", "error");
+        return;
+      }
+      addAttendanceRecord(attendanceForm);
+      setAttendanceForm({
+        date: new Date().toISOString().split('T')[0],
+        arrivalTime: '08:00',
+        departureTime: '',
+        comment: ''
+      });
+    };
+
+    const handleSendStudentMessage = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!myConversationId || !studentMessageDraft.trim()) return;
+      sendMessage(myConversationId, studentMessageDraft);
+      setStudentMessageDraft('');
     };
 
     // Calculate overall average grade (Weighted on 20)
@@ -146,12 +187,6 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
               >
                 <ClipboardList className="mr-1.5 h-4 w-4" /> Rédiger mon rapport
               </button>
-              <button 
-                onClick={() => onViewChange('internships')}
-                className="px-4 py-2 bg-white text-slate-900 hover:bg-slate-100 text-xs font-bold rounded-lg transition-all"
-              >
-                Explorer de nouvelles offres
-              </button>
             </div>
           </div>
           <div className="absolute right-[-20px] bottom-[-20px] opacity-10 hidden lg:block">
@@ -170,7 +205,7 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
             }`}
           >
             <Briefcase className="h-4 w-4 mr-2" />
-            Suivi & Recommandations
+            Suivi du stage
           </button>
           <button
             onClick={() => setStudentTab('reports')}
@@ -182,6 +217,28 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
           >
             <ClipboardList className="h-4 w-4 mr-2" />
             Journal de Stage ({myReports.length})
+          </button>
+          <button
+            onClick={() => setStudentTab('attendance')}
+            className={`px-4 py-2.5 rounded-lg text-xs md:text-sm font-bold flex items-center shrink-0 transition-all ${
+              studentTab === 'attendance'
+                ? 'bg-blue-50 text-blue-700 shadow-2xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Presences ({myAttendance.length})
+          </button>
+          <button
+            onClick={() => setStudentTab('messages')}
+            className={`px-4 py-2.5 rounded-lg text-xs md:text-sm font-bold flex items-center shrink-0 transition-all ${
+              studentTab === 'messages'
+                ? 'bg-blue-50 text-blue-700 shadow-2xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <HelpCircle className="h-4 w-4 mr-2" />
+            Messages ({myMessages.length})
           </button>
           <button
             onClick={() => setStudentTab('grades')}
@@ -207,11 +264,11 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
           </button>
         </div>
 
-        {/* Tab 1: APPLICATIONS & RECOMMENDATIONS */}
+        {/* Tab 1: APPLICATIONS */}
         {studentTab === 'applications' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+          <div className="animate-fade-in">
             {/* Quick stats on top */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6">
               {/* Counter panels */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
@@ -235,12 +292,9 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                   <div className="p-8 text-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50">
                     <FileCheck className="h-10 w-10 text-slate-300 mx-auto mb-2" />
                     <p className="text-slate-500 font-medium text-xs">Aucune candidature soumise pour le moment.</p>
-                    <button 
-                      onClick={() => onViewChange('internships')}
-                      className="mt-3 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg"
-                    >
-                      Découvrir des offres
-                    </button>
+                    <p className="mt-3 text-[11px] text-slate-400">
+                      Votre historique apparaitra ici apres validation par l entreprise.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -253,12 +307,12 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                         </div>
                         <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            app.status === ApplicationStatus.ACCEPTED ? 'bg-emerald-100 text-emerald-800' :
+                            [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(app.status) ? 'bg-emerald-100 text-emerald-800' :
                             app.status === ApplicationStatus.REJECTED ? 'bg-rose-100 text-rose-800' :
                             app.status === ApplicationStatus.INTERVIEW ? 'bg-purple-100 text-purple-800' :
                             'bg-amber-100 text-amber-800 font-medium'
                           }`}>
-                            {app.status === ApplicationStatus.PENDING ? 'En attente' : app.status}
+                            {statusLabel(app.status)}
                           </span>
                         </div>
                       </div>
@@ -268,47 +322,6 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
               </div>
             </div>
 
-            {/* AI Advisor & Recommendations */}
-            <div className="space-y-6">
-              <div className="bg-indigo-950 p-5 rounded-2xl text-white shadow-md border border-indigo-900 space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Sparkles className="h-5 w-5 text-indigo-400" />
-                  <h4 className="font-bold text-sm tracking-wide">Compagnon de stage IA</h4>
-                </div>
-                <p className="text-xs text-indigo-200 leading-relaxed">
-                  En tant qu'étudiant ciblant les industries minières et services financiers du <strong>Haut-Katanga</strong> (Lubumbashi, Kolwezi, Likasi), nous vous recommandons d'axer votre profil sur la sécurité industrielle et l'énergétique pratique.
-                </p>
-                <div className="p-3 bg-indigo-900/60 rounded-lg border border-indigo-800/80">
-                  <span className="text-[10px] text-indigo-300 font-bold block uppercase">Conseil du Moment</span>
-                  <p className="text-[11px] text-indigo-100 mt-1">Renseignez régulièrement vos heures de chantiers hebdomadaires pour faciliter la validation automatique par votre promoteur académique.</p>
-                </div>
-              </div>
-
-              {/* Recommended List */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center">
-                  <TrendingUp className="h-4 w-4 mr-1 text-blue-600" /> Recommandé pour vous
-                </h3>
-                {recommendations.length === 0 ? (
-                  <p className="text-xs text-slate-500">Ajoutez des compétences (Géologie, API, SQL) pour débloquer les offres correspondantes.</p>
-                ) : (
-                  recommendations.map(r => (
-                    <div key={r.id} className="p-3 border rounded-lg hover:border-blue-300 transition-colors bg-slate-50/20 block cursor-pointer" onClick={() => onViewChange('internships')}>
-                      <div className="flex justify-between text-[10px] text-slate-500">
-                        <span>{r.companyName}</span>
-                        <span>{r.city}</span>
-                      </div>
-                      <h4 className="font-bold text-slate-900 text-xs mt-1 truncate">{r.title}</h4>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {r.skillsRequired.slice(0, 2).map((s, idx) => (
-                          <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[8px] font-semibold rounded-sm">{s}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </div>
         )}
 
@@ -418,6 +431,102 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {studentTab === 'attendance' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+            <form onSubmit={handleAddAttendance} className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="font-bold text-slate-900 text-sm md:text-base flex items-center">
+                <CalendarDays className="mr-2 h-5 w-5 text-blue-600" />
+                Signaler ma presence
+              </h3>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date</label>
+                <input type="date" value={attendanceForm.date} onChange={(e) => setAttendanceForm({ ...attendanceForm, date: e.target.value })} className="w-full text-xs p-2.5 rounded-lg border border-slate-300 bg-slate-50" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Arrivee</label>
+                  <input type="time" value={attendanceForm.arrivalTime} onChange={(e) => setAttendanceForm({ ...attendanceForm, arrivalTime: e.target.value })} className="w-full text-xs p-2.5 rounded-lg border border-slate-300 bg-slate-50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Sortie</label>
+                  <input type="time" value={attendanceForm.departureTime} onChange={(e) => setAttendanceForm({ ...attendanceForm, departureTime: e.target.value })} className="w-full text-xs p-2.5 rounded-lg border border-slate-300 bg-slate-50" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Commentaire</label>
+                <textarea rows={3} value={attendanceForm.comment} onChange={(e) => setAttendanceForm({ ...attendanceForm, comment: e.target.value })} className="w-full text-xs p-2.5 rounded-lg border border-slate-300 bg-slate-50" placeholder="Activite ou precision de presence" />
+              </div>
+              <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                Envoyer au superviseur
+              </button>
+            </form>
+
+            <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="font-bold text-slate-900 text-sm md:text-base">Historique des presences</h3>
+              {myAttendance.length === 0 ? (
+                <p className="py-12 text-center text-xs text-slate-500 border border-dashed rounded-xl">Aucune presence signalee.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myAttendance.map((record) => (
+                    <div key={record.id} className="p-4 border border-slate-150 rounded-xl bg-slate-50/40 flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-xs">{new Date(record.date).toLocaleDateString()}</h4>
+                        <p className="text-xs text-slate-600 mt-1">Arrivee {record.arrivalTime}{record.departureTime ? ` - Sortie ${record.departureTime}` : ''}</p>
+                        {record.comment && <p className="text-[11px] text-slate-500 mt-1">{record.comment}</p>}
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        record.status === 'validee' ? 'bg-emerald-100 text-emerald-800' :
+                        record.status === 'refusee' ? 'bg-rose-100 text-rose-800' :
+                        'bg-amber-100 text-amber-800'
+                      }`}>
+                        {record.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {studentTab === 'messages' && (
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4 animate-fade-in">
+            <div>
+              <h3 className="font-bold text-slate-900 text-base md:text-lg">Conversation avec mon superviseur</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {mySupervisorId ? 'Echangez avec votre maitre de stage assigne.' : 'Aucun superviseur ne vous est encore assigne.'}
+              </p>
+            </div>
+            {mySupervisorId ? (
+              <>
+                <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  {myMessages.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500 py-10">Aucun message pour le moment.</p>
+                  ) : (
+                    myMessages.map((message) => (
+                      <div key={message.id} className="rounded-lg bg-white p-3 border border-slate-100">
+                        <div className="text-[10px] font-bold uppercase text-slate-400">{message.senderRole}</div>
+                        <p className="text-xs text-slate-800 mt-1">{message.body}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <form onSubmit={handleSendStudentMessage} className="flex gap-2">
+                  <input
+                    value={studentMessageDraft}
+                    onChange={(e) => setStudentMessageDraft(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 p-2.5 text-xs"
+                    placeholder="Votre message..."
+                  />
+                  <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">
+                    Envoyer
+                  </button>
+                </form>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -560,7 +669,15 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                         href="#download"
                         onClick={(e) => {
                           e.preventDefault();
-                          showToast("Téléchargement de la note d'acceptation simulé avec succès.", "success");
+                          exportPdf('Note_Acceptation_Officielle.pdf', 'Note acceptation officielle', [
+                            `Etudiant: ${a.studentName}`,
+                            `Entreprise: ${a.companyName}`,
+                            `Stage: ${a.internshipTitle}`,
+                            `Statut: ${a.status}`,
+                            `Date de reception: ${new Date(a.receivedAt).toLocaleDateString()}`,
+                            `Date de signature: ${a.issueDate ? new Date(a.issueDate).toLocaleDateString() : 'En attente'}`
+                          ]);
+                          showToast("Note d'acceptation PDF generee avec succes.", "success");
                         }}
                         className="p-2 text-blue-650 hover:bg-slate-100 hover:text-blue-750 rounded-lg transition"
                       >
@@ -584,11 +701,11 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
     const comProf = companies.find(c => c.userId === currentUser.id);
     const myJobs = internships.filter(i => i.companyId === comProf?.id);
     const myJobsIds = myJobs.map(j => j.id);
-    const incomingApps = applications.filter(a => myJobsIds.includes(a.internshipId));
+    const incomingApps = applications.filter(a => a.companyId === comProf?.id || myJobsIds.includes(a.internshipId));
 
     const pendingReview = incomingApps.filter(a => a.status === ApplicationStatus.PENDING);
     const interviewsCount = incomingApps.filter(a => a.status === ApplicationStatus.INTERVIEW);
-    const acceptedTotal = incomingApps.filter(a => a.status === ApplicationStatus.ACCEPTED);
+    const acceptedTotal = incomingApps.filter(a => [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(a.status));
 
     return (
       <div className="space-y-6 animate-fade-in" id="company-workspace">
@@ -606,9 +723,6 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                 Créer une offre de stage
               </button>
             </div>
-          </div>
-          <div className="absolute right-0 bottom-0 top-0 w-1/3 opacity-10 hidden md:block">
-            <Building2 className="w-full h-full p-6 text-slate-200" />
           </div>
         </div>
 
@@ -653,11 +767,11 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
                       <p className="text-xs text-slate-500 font-medium">{app.internshipTitle}</p>
                     </div>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
-                      app.status === ApplicationStatus.ACCEPTED ? 'bg-emerald-100 text-emerald-800' :
+                      [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP].includes(app.status) ? 'bg-emerald-100 text-emerald-800' :
                       app.status === ApplicationStatus.REJECTED ? 'bg-rose-100 text-rose-800' :
                       'bg-amber-100 text-amber-800'
                     }`}>
-                      {app.status === ApplicationStatus.PENDING ? 'Reçu' : app.status}
+                      {statusLabel(app.status)}
                     </span>
                   </div>
                 ))}
@@ -684,6 +798,7 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
             </div>
           </div>
         </div>
+
       </div>
     );
   }
@@ -704,7 +819,7 @@ export default function Dashboard({ onViewChange }: { onViewChange: (view: strin
     const allReportsList = dailyReports;
     const allGradesList = studentGrades;
     const allAcceptanceList = studentAcceptances;
-    const activeStudentProfiles = students;
+    const activeStudentProfiles = students.filter((student) => !student.isArchived && student.status !== ApplicationStatus.ARCHIVED);
 
     // Handle Admin updating a student, validating daily tasks
     const toggleEditReport = (report: DailyReport) => {

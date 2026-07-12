@@ -10,7 +10,11 @@ import {
   AuditLog,
   DailyReport,
   StudentGrade,
-  StudentAcceptance
+  StudentAcceptance,
+  AttendanceRecord,
+  Conversation,
+  Message,
+  ArchiveRecord
 } from '../types';
 
 const USERS_KEY = 'internship_users';
@@ -23,6 +27,10 @@ const AUDIT_LOGS_KEY = 'internship_audit_logs';
 const REPORTS_KEY = 'internship_daily_reports';
 const GRADES_KEY = 'internship_student_grades';
 const ACCEPTANCE_KEY = 'internship_student_acceptance';
+const ATTENDANCE_KEY = 'internship_attendance_records';
+const CONVERSATIONS_KEY = 'internship_conversations';
+const MESSAGES_KEY = 'internship_messages';
+const ARCHIVES_KEY = 'internship_archives';
 
 const INITIAL_USERS: User[] = [
   {
@@ -569,6 +577,245 @@ const INITIAL_ACCEPTANCE: StudentAcceptance[] = [
   }
 ];
 
+const DEFAULT_DEPARTMENTS = [
+  { id: 'dept-informatique', name: 'Informatique', description: 'Applications, support, donnees et outils numeriques.' },
+  { id: 'dept-rh', name: 'Ressources humaines', description: 'Administration du personnel et recrutement.' },
+  { id: 'dept-finance', name: 'Finance', description: 'Tresorerie, audit, budget et controle.' },
+  { id: 'dept-maintenance', name: 'Maintenance', description: 'Maintenance industrielle, reseaux et equipements.' },
+  { id: 'dept-communication', name: 'Communication', description: 'Communication interne, marketing et relations publiques.' }
+];
+
+const DEFAULT_SKILLS = ['React', 'Node.js', 'Excel avance', 'Maintenance', 'Communication', 'Analyse de donnees'];
+const DEFAULT_SPECIALTIES = ['Genie logiciel', 'Reseaux informatiques', 'Finance', 'Comptabilite', 'Electromecanique', 'Marketing'];
+
+const INITIAL_ATTENDANCE: AttendanceRecord[] = [
+  {
+    id: 'attendance-1',
+    studentId: 'student-profile-1',
+    studentName: 'Sarah El Amrani',
+    companyId: 'company-profile-1',
+    supervisorId: 'user-supervisor-demo-1',
+    date: '2026-06-18',
+    arrivalTime: '08:00',
+    departureTime: '16:00',
+    status: 'validee',
+    comment: 'Presence validee lors de la visite atelier.',
+    reviewedBy: 'user-supervisor-demo-1',
+    createdAt: '2026-06-18T16:05:00Z'
+  }
+];
+
+const INITIAL_CONVERSATIONS: Conversation[] = [
+  {
+    id: 'conversation-1',
+    companyId: 'company-profile-1',
+    studentId: 'student-profile-1',
+    supervisorId: 'user-supervisor-demo-1',
+    subject: 'Suivi du stage',
+    createdAt: '2026-06-18T09:00:00Z',
+    updatedAt: '2026-06-18T09:15:00Z'
+  }
+];
+
+const INITIAL_MESSAGES: Message[] = [
+  {
+    id: 'message-1',
+    conversationId: 'conversation-1',
+    senderId: 'user-supervisor-demo-1',
+    senderRole: RoleType.SUPERVISOR,
+    body: 'Bienvenue Sarah. Deposez votre rapport quotidien avant la fin de chaque journee.',
+    createdAt: '2026-06-18T09:15:00Z'
+  }
+];
+
+const INITIAL_ARCHIVES: ArchiveRecord[] = [];
+
+const statusAliases: Record<string, ApplicationStatus> = {
+  'En attente': ApplicationStatus.PENDING,
+  'AcceptÃ©e': ApplicationStatus.ACCEPTED,
+  'Acceptée': ApplicationStatus.ACCEPTED,
+  'RefusÃ©e': ApplicationStatus.REJECTED,
+  'Refusée': ApplicationStatus.REJECTED,
+  'Entretien programmÃ©': ApplicationStatus.INTERVIEW,
+  'Entretien programmé': ApplicationStatus.INTERVIEW,
+  pending: ApplicationStatus.PENDING,
+  accepted: ApplicationStatus.ACCEPTED,
+  rejected: ApplicationStatus.REJECTED,
+  interview: ApplicationStatus.INTERVIEW
+};
+
+function normalizeApplicationStatus(status: any): ApplicationStatus {
+  if (Object.values(ApplicationStatus).includes(status)) return status;
+  return statusAliases[String(status)] || ApplicationStatus.PENDING;
+}
+
+function hashPassword(password?: string) {
+  if (!password) return undefined;
+  try {
+    return `local:${btoa(unescape(encodeURIComponent(password)))}`;
+  } catch {
+    return `local:${password.length}`;
+  }
+}
+
+function parseList(value?: string | string[]) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function defaultDepartmentsForCompany(companyId: string) {
+  return DEFAULT_DEPARTMENTS.map((dept, index) => ({
+    ...dept,
+    id: `${companyId}-${dept.id}-${index}`
+  }));
+}
+
+function parseStored<T>(key: string, fallback: T[]): T[] {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeUser(user: any): User {
+  const role =
+    user.role === 'student' ? RoleType.STUDENT :
+    user.role === 'company' ? RoleType.COMPANY :
+    user.role === 'supervisor' ? RoleType.SUPERVISOR :
+    user.role === 'admin' ? RoleType.ADMIN :
+    user.role;
+
+  return {
+    ...user,
+    role,
+    status: user.status || 'active',
+    assignedStudentIds: role === RoleType.SUPERVISOR
+      ? Array.from(new Set([...(user.assignedStudentIds || []), ...(user.id === 'user-supervisor-demo-1' ? ['student-profile-1'] : [])]))
+      : user.assignedStudentIds
+  };
+}
+
+function normalizeCompany(company: any): CompanyProfile {
+  return {
+    ...company,
+    departments: company.departments?.length ? company.departments : defaultDepartmentsForCompany(company.id),
+    requiredSkills: company.requiredSkills?.length ? company.requiredSkills : DEFAULT_SKILLS,
+    acceptedSpecialties: company.acceptedSpecialties?.length ? company.acceptedSpecialties : DEFAULT_SPECIALTIES,
+    eligibilityCriteria: company.eligibilityCriteria || 'Etre inscrit dans un etablissement reconnu, fournir un CV lisible et choisir un departement compatible.'
+  };
+}
+
+function normalizeStudent(student: any): StudentProfile {
+  const status = normalizeApplicationStatus(student.applicationStatus || student.status || ApplicationStatus.PENDING);
+  return {
+    ...student,
+    university: student.university || 'Universite de Lubumbashi',
+    faculty: student.faculty || 'Faculte Polytechnique',
+    level: student.level || 'BAC 2',
+    field: student.field || student.education || 'Electromecanique',
+    specialty: student.specialty || 'Electromecanique',
+    companyId: student.companyId || (student.id === 'student-profile-1' ? 'company-profile-1' : undefined),
+    companyName: student.companyName || (student.id === 'student-profile-1' ? 'Gecamines S.A.' : undefined),
+    departmentId: student.departmentId || (student.id === 'student-profile-1' ? 'company-profile-1-dept-maintenance-3' : undefined),
+    departmentName: student.departmentName || (student.id === 'student-profile-1' ? 'Maintenance' : undefined),
+    supervisorId: student.supervisorId || (student.id === 'student-profile-1' ? 'user-supervisor-demo-1' : undefined),
+    applicationStatus: status,
+    status,
+    isArchived: Boolean(student.isArchived || status === ApplicationStatus.ARCHIVED),
+    favoriteInternships: student.favoriteInternships || [],
+    skills: student.skills || []
+  };
+}
+
+function normalizeApplication(app: any): Application {
+  const internship = INITIAL_INTERNSHIPS.find((item) => item.id === app.internshipId);
+  const company = INITIAL_COMPANIES.find((item) => item.name === app.companyName || item.id === app.companyId);
+  return {
+    ...app,
+    status: normalizeApplicationStatus(app.status),
+    companyId: app.companyId || internship?.companyId || company?.id,
+    departmentName: app.departmentName || 'Non precise',
+    specialty: app.specialty || 'Non precise'
+  };
+}
+
+function archiveExpiredStudentsInStorage() {
+  const users = parseStored<User>(USERS_KEY, []).map(normalizeUser);
+  const students = parseStored<StudentProfile>(STUDENTS_KEY, []).map(normalizeStudent);
+  const applications = parseStored<Application>(APPLICATIONS_KEY, []).map(normalizeApplication);
+  const archives = parseStored<ArchiveRecord>(ARCHIVES_KEY, []);
+  const now = new Date();
+  let changed = false;
+  const archivedUserIds = new Set<string>();
+
+  const updatedStudents = students.map((student) => {
+    if (student.isArchived) return student;
+    const rejectedExpired =
+      student.status === ApplicationStatus.REJECTED &&
+      student.rejectedAt &&
+      now.getTime() - new Date(student.rejectedAt).getTime() >= 24 * 60 * 60 * 1000;
+    const stageExpired =
+      [ApplicationStatus.ACCEPTED, ApplicationStatus.IN_INTERNSHIP, ApplicationStatus.COMPLETED].includes(student.status || ApplicationStatus.PENDING) &&
+      (student.expiresAt || student.endDate) &&
+      new Date(student.expiresAt || student.endDate || '').getTime() < now.getTime();
+
+    if (!rejectedExpired && !stageExpired) return student;
+
+    const archivedStudent = {
+      ...student,
+      status: ApplicationStatus.ARCHIVED,
+      applicationStatus: stageExpired ? ApplicationStatus.COMPLETED : ApplicationStatus.REJECTED,
+      supervisorId: stageExpired ? student.supervisorId : undefined,
+      isArchived: true,
+      archivedAt: new Date().toISOString()
+    };
+
+    if (!archives.some((archive) => archive.studentId === student.id)) {
+      archives.unshift({
+        id: `archive-${Date.now()}-${student.id}`,
+        companyId: student.companyId,
+        companyName: student.companyName,
+        studentId: student.id,
+        studentName: student.name,
+        studentEmail: student.email,
+        status: archivedStudent.applicationStatus || ApplicationStatus.ARCHIVED,
+        reason: rejectedExpired ? 'rejected' : 'expired',
+        rejectionReason: student.rejectionReason,
+        archivedAt: archivedStudent.archivedAt,
+        snapshot: archivedStudent
+      });
+    }
+
+    archivedUserIds.add(student.userId);
+    changed = true;
+    return archivedStudent;
+  });
+
+  const updatedApplications = applications.map((app) => {
+    const student = updatedStudents.find((item) => item.id === app.studentId);
+    if (!student?.isArchived || app.archivedAt) return app;
+    return { ...app, archivedAt: student.archivedAt, status: student.applicationStatus || ApplicationStatus.ARCHIVED };
+  });
+
+  if (changed) {
+    const updatedUsers = users
+      .filter((user) => !archivedUserIds.has(user.id))
+      .map((user) =>
+        user.role === RoleType.SUPERVISOR
+          ? { ...user, assignedStudentIds: (user.assignedStudentIds || []).filter((studentId) => !updatedStudents.some((student) => student.id === studentId && student.isArchived)) }
+          : user
+      );
+    localStorage.setItem(USERS_KEY, JSON.stringify(updatedUsers));
+    localStorage.setItem(STUDENTS_KEY, JSON.stringify(updatedStudents));
+    localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(updatedApplications));
+    localStorage.setItem(ARCHIVES_KEY, JSON.stringify(archives));
+  }
+}
+
 
 
 // Database initialization helper functions
@@ -580,7 +827,12 @@ export const mockDb = {
       try {
         const storedUsers = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
         const storedUserIds = new Set(storedUsers.map((u: any) => u.id));
-        const missingUsers = INITIAL_USERS.filter(u => !storedUserIds.has(u.id));
+        const archivedStudentUserIds = new Set(
+          parseStored<StudentProfile>(STUDENTS_KEY, [])
+            .filter((student) => student.isArchived || student.status === ApplicationStatus.ARCHIVED)
+            .map((student) => student.userId)
+        );
+        const missingUsers = INITIAL_USERS.filter(u => !storedUserIds.has(u.id) && !archivedStudentUserIds.has(u.id));
         if (missingUsers.length > 0) {
           localStorage.setItem(USERS_KEY, JSON.stringify([...storedUsers, ...missingUsers]));
         }
@@ -645,11 +897,32 @@ export const mockDb = {
     if (!localStorage.getItem(ACCEPTANCE_KEY)) {
       localStorage.setItem(ACCEPTANCE_KEY, JSON.stringify(INITIAL_ACCEPTANCE));
     }
+    if (!localStorage.getItem(ATTENDANCE_KEY)) {
+      localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(INITIAL_ATTENDANCE));
+    }
+    if (!localStorage.getItem(CONVERSATIONS_KEY)) {
+      localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(INITIAL_CONVERSATIONS));
+    }
+    if (!localStorage.getItem(MESSAGES_KEY)) {
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify(INITIAL_MESSAGES));
+    }
+    if (!localStorage.getItem(ARCHIVES_KEY)) {
+      localStorage.setItem(ARCHIVES_KEY, JSON.stringify(INITIAL_ARCHIVES));
+    }
+    mockDb.migrate();
+  },
+
+  migrate: () => {
+    localStorage.setItem(USERS_KEY, JSON.stringify(parseStored<User>(USERS_KEY, INITIAL_USERS).map(normalizeUser)));
+    localStorage.setItem(COMPANIES_KEY, JSON.stringify(parseStored<CompanyProfile>(COMPANIES_KEY, INITIAL_COMPANIES).map(normalizeCompany)));
+    localStorage.setItem(STUDENTS_KEY, JSON.stringify(parseStored<StudentProfile>(STUDENTS_KEY, INITIAL_STUDENTS).map(normalizeStudent)));
+    localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(parseStored<Application>(APPLICATIONS_KEY, INITIAL_APPLICATIONS).map(normalizeApplication)));
+    archiveExpiredStudentsInStorage();
   },
 
   getUsers: (): User[] => {
     mockDb.initialize();
-    return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    return parseStored<User>(USERS_KEY, []).map(normalizeUser);
   },
 
   saveUsers: (users: User[]) => {
@@ -658,7 +931,7 @@ export const mockDb = {
 
   getStudents: (): StudentProfile[] => {
     mockDb.initialize();
-    return JSON.parse(localStorage.getItem(STUDENTS_KEY) || '[]');
+    return parseStored<StudentProfile>(STUDENTS_KEY, []).map(normalizeStudent);
   },
 
   saveStudents: (students: StudentProfile[]) => {
@@ -667,7 +940,7 @@ export const mockDb = {
 
   getCompanies: (): CompanyProfile[] => {
     mockDb.initialize();
-    return JSON.parse(localStorage.getItem(COMPANIES_KEY) || '[]');
+    return parseStored<CompanyProfile>(COMPANIES_KEY, []).map(normalizeCompany);
   },
 
   saveCompanies: (companies: CompanyProfile[]) => {
@@ -691,7 +964,7 @@ export const mockDb = {
 
   getApplications: (): Application[] => {
     mockDb.initialize();
-    return JSON.parse(localStorage.getItem(APPLICATIONS_KEY) || '[]');
+    return parseStored<Application>(APPLICATIONS_KEY, []).map(normalizeApplication);
   },
 
   saveApplications: (applications: Application[]) => {
@@ -734,6 +1007,42 @@ export const mockDb = {
     localStorage.setItem(ACCEPTANCE_KEY, JSON.stringify(acceptance));
   },
 
+  getAttendanceRecords: (): AttendanceRecord[] => {
+    mockDb.initialize();
+    return parseStored<AttendanceRecord>(ATTENDANCE_KEY, []);
+  },
+
+  saveAttendanceRecords: (attendance: AttendanceRecord[]) => {
+    localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(attendance));
+  },
+
+  getConversations: (): Conversation[] => {
+    mockDb.initialize();
+    return parseStored<Conversation>(CONVERSATIONS_KEY, []);
+  },
+
+  saveConversations: (conversations: Conversation[]) => {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
+  },
+
+  getMessages: (): Message[] => {
+    mockDb.initialize();
+    return parseStored<Message>(MESSAGES_KEY, []);
+  },
+
+  saveMessages: (messages: Message[]) => {
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+  },
+
+  getArchives: (): ArchiveRecord[] => {
+    mockDb.initialize();
+    return parseStored<ArchiveRecord>(ARCHIVES_KEY, []);
+  },
+
+  saveArchives: (archives: ArchiveRecord[]) => {
+    localStorage.setItem(ARCHIVES_KEY, JSON.stringify(archives));
+  },
+
   getAuditLogs: (): AuditLog[] => {
     mockDb.initialize();
     return JSON.parse(localStorage.getItem(AUDIT_LOGS_KEY) || '[]');
@@ -765,7 +1074,11 @@ export const mockDb = {
     auditLogs: mockDb.getAuditLogs(),
     dailyReports: mockDb.getDailyReports(),
     studentGrades: mockDb.getStudentGrades(),
-    studentAcceptances: mockDb.getStudentAcceptance()
+    studentAcceptances: mockDb.getStudentAcceptance(),
+    attendanceRecords: mockDb.getAttendanceRecords(),
+    conversations: mockDb.getConversations(),
+    messages: mockDb.getMessages(),
+    archives: mockDb.getArchives()
   }),
 
   importSnapshot: (snapshot: Partial<{
@@ -779,6 +1092,10 @@ export const mockDb = {
     dailyReports: DailyReport[];
     studentGrades: StudentGrade[];
     studentAcceptances: StudentAcceptance[];
+    attendanceRecords: AttendanceRecord[];
+    conversations: Conversation[];
+    messages: Message[];
+    archives: ArchiveRecord[];
   }>) => {
     if (snapshot.users) mockDb.saveUsers(snapshot.users);
     if (snapshot.students) mockDb.saveStudents(snapshot.students);
@@ -790,6 +1107,11 @@ export const mockDb = {
     if (snapshot.dailyReports) mockDb.saveDailyReports(snapshot.dailyReports);
     if (snapshot.studentGrades) mockDb.saveStudentGrades(snapshot.studentGrades);
     if (snapshot.studentAcceptances) mockDb.saveStudentAcceptance(snapshot.studentAcceptances);
+    if (snapshot.attendanceRecords) mockDb.saveAttendanceRecords(snapshot.attendanceRecords);
+    if (snapshot.conversations) mockDb.saveConversations(snapshot.conversations);
+    if (snapshot.messages) mockDb.saveMessages(snapshot.messages);
+    if (snapshot.archives) mockDb.saveArchives(snapshot.archives);
+    mockDb.migrate();
   },
 
   addNotification: (userId: string, title: string, message: string) => {

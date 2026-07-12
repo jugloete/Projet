@@ -20,6 +20,13 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(file);
+});
+
 export default function InternshipsList() {
   const { 
     currentUser, 
@@ -50,6 +57,8 @@ export default function InternshipsList() {
 
   // Application & Job Posting Form inputs
   const [cvName, setCvName] = useState('');
+  const [cvUrl, setCvUrl] = useState('');
+  const [cvFileLoading, setCvFileLoading] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
 
   // New internship fields
@@ -96,18 +105,30 @@ export default function InternshipsList() {
     setSuccessMsg('');
 
     if (!cvName) {
-      setErrorMsg('Veuillez spécifier le nom du fichier de votre CV (ex: Mon_CV.pdf).');
+      setErrorMsg('Veuillez choisir le fichier de votre CV.');
+      return;
+    }
+
+    if (!cvUrl || cvUrl === '#') {
+      setErrorMsg('Veuillez choisir un fichier CV ouvrable avant d envoyer la candidature.');
+      return;
+    }
+
+    if (cvFileLoading) {
+      setErrorMsg('Le CV est encore en cours de chargement, patientez un instant.');
       return;
     }
 
     try {
       if (selectedInternship) {
-        applyToInternship(selectedInternship.id, cvName, coverLetter);
+        applyToInternship(selectedInternship.id, cvName, coverLetter, { cvUrl });
         setSuccessMsg('Votre candidature a été envoyée avec succès à l\'entreprise !');
         setTimeout(() => {
           setApplyModalOpen(false);
           setSelectedInternship(null);
           setCvName('');
+          setCvUrl('');
+          setCvFileLoading(false);
           setCoverLetter('');
           setSuccessMsg('');
         }, 2000);
@@ -158,6 +179,8 @@ export default function InternshipsList() {
   const openApplyModal = (internship: Internship) => {
     setSelectedInternship(internship);
     setCvName(studentProfile?.cvName || '');
+    setCvUrl(studentProfile?.cvUrl || '');
+    setCvFileLoading(false);
     setCoverLetter(studentProfile?.coverLetter || '');
     setApplyModalOpen(true);
   };
@@ -435,16 +458,41 @@ export default function InternshipsList() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Nom du CV PDF attaché *
+                  Fichier CV attaché *
                 </label>
-                <input
-                  type="text"
-                  placeholder="Ex : Sarah_CV_Developpeur.pdf"
-                  value={cvName}
-                  onChange={(e) => setCvName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+                <label className="flex min-h-[2.75rem] cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-blue-400 hover:bg-blue-50/50 focus-within:ring-2 focus-within:ring-blue-500">
+                  <FileText className="h-4.5 w-4.5 shrink-0 text-blue-500" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {cvFileLoading ? 'Chargement du CV...' : cvName || 'Choisir un CV PDF, DOC ou DOCX'}
+                  </span>
+                  <span className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-[10px] font-bold uppercase text-white">
+                    Parcourir
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="sr-only"
+                    required={!cvUrl || cvUrl === '#'}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setErrorMsg('');
+                      setCvName(file.name);
+                      setCvFileLoading(true);
+                      try {
+                        setCvUrl(await readFileAsDataUrl(file));
+                      } catch {
+                        setCvUrl('');
+                        setErrorMsg('Impossible de charger ce CV. Veuillez choisir un autre fichier.');
+                      } finally {
+                        setCvFileLoading(false);
+                      }
+                    }}
+                  />
+                </label>
+                <p className="mt-1 text-[10px] font-medium text-slate-400">
+                  Formats acceptes : PDF, DOC ou DOCX.
+                </p>
               </div>
 
               <div>

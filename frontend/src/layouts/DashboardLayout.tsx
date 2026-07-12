@@ -14,7 +14,8 @@ import {
   ShieldAlert, 
   CalendarClock,
   User,
-  Terminal
+  Terminal,
+  Archive
 } from 'lucide-react';
 
 interface SidebarItem {
@@ -31,7 +32,7 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ currentView, onViewChange, children }: DashboardLayoutProps) {
-  const { currentUser, logout, notifications, markNotificationAsRead } = useApp();
+  const { currentUser, studentProfile, logout, notifications, markNotificationAsRead } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
 
@@ -87,6 +88,12 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       rolesAllowed: [RoleType.COMPANY]
     },
     {
+      id: 'archives',
+      name: 'Etudiants archives',
+      icon: Archive,
+      rolesAllowed: [RoleType.ADMIN, RoleType.COMPANY]
+    },
+    {
       id: 'system-logs',
       name: 'Logs d\'audit',
       icon: ShieldAlert,
@@ -96,15 +103,16 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
 
   const filteredItems = sidebarItems.filter(item => item.rolesAllowed.includes(currentUser.role));
   const unreadNotifications = notifications.filter(n => n.userId === currentUser.id && !n.read);
+  const profilePhotoUrl = currentUser.role === RoleType.STUDENT ? studentProfile?.avatarUrl : undefined;
 
   return (
-    <div className="min-h-screen flex bg-[#090d16] text-slate-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen flex text-slate-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
       
       {/* SIDEBAR FOR DESKTOP */}
-      <aside className="hidden md:flex flex-col w-64 bg-[#0b0f19] border-r border-slate-900 text-slate-400 shrink-0 z-20">
+      <aside className="hidden md:flex flex-col w-64 bg-slate-900/82 border-r border-slate-700/70 text-slate-300 shrink-0 z-20 backdrop-blur-xl shadow-2xl shadow-slate-950/20">
         {/* Sidebar Header */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-900/60">
-          <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mr-2.5">
+        <div className="h-16 flex items-center px-6 border-b border-slate-800/60">
+          <div className="h-8 w-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mr-2.5 shadow-lg shadow-emerald-950/30">
             <Terminal className="h-4 w-4 text-emerald-400" />
           </div>
           <div>
@@ -112,16 +120,25 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
               Internship <span className="text-emerald-400">Hub</span>
             </span>
             <span className="text-[9px] text-slate-500 font-mono tracking-wider block uppercase">
-              UPL • BAC 2
+              Gestion des stages
             </span>
           </div>
         </div>
 
         {/* User Quick Identity */}
-        <div className="mx-3 my-3 p-3 bg-slate-900/40 border border-slate-800/40 rounded-xl flex items-center space-x-3">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-white uppercase text-xs shrink-0 shadow-md">
-            {currentUser.name.charAt(0)}
-          </div>
+        <div className="mx-3 my-3 p-3 bg-slate-800/70 border border-slate-600/50 rounded-xl flex items-center space-x-3 shadow-inner shadow-slate-950/10">
+          {profilePhotoUrl ? (
+            <img
+              src={profilePhotoUrl}
+              alt={currentUser.name}
+              referrerPolicy="no-referrer"
+              className="h-9 w-9 rounded-full object-cover shrink-0 ring-2 ring-slate-700 shadow-md"
+            />
+          ) : (
+            <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-white uppercase text-xs shrink-0 shadow-md">
+              {currentUser.name.charAt(0)}
+            </div>
+          )}
           <div className="overflow-hidden truncate">
             <h4 className="font-bold text-xs text-slate-200 truncate">{currentUser.name}</h4>
             <div className="flex items-center mt-0.5">
@@ -138,7 +155,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
         </div>
 
         {/* Sidebar Nav */}
-        <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto">
           {filteredItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -148,8 +165,8 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
                 onClick={() => onViewChange(item.id)}
                 className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all group cursor-pointer ${
                   isActive 
-                    ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20 shadow-xs' 
-                    : 'hover:bg-slate-900/50 hover:text-slate-200'
+                    ? 'bg-emerald-500/14 text-emerald-300 font-semibold border border-emerald-500/30 shadow-lg shadow-emerald-950/20'
+                    : 'border border-transparent hover:bg-slate-800/75 hover:text-slate-100 hover:border-slate-600/60'
                 }`}
               >
                 <Icon className={`h-4 w-4 transition-colors ${isActive ? 'text-emerald-400' : 'text-slate-500 group-hover:text-slate-400'}`} />
@@ -160,7 +177,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-slate-900">
+        <div className="p-3 border-t border-slate-800/60">
           <button
             onClick={logout}
             className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-500 hover:bg-red-950/20 hover:text-red-400 transition-all cursor-pointer group"
@@ -175,7 +192,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* NAVBAR */}
-        <header className="h-16 bg-[#090d16]/80 border-b border-slate-900/60 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10">
+        <header className="h-16 bg-slate-900/72 border-b border-slate-700/60 backdrop-blur-xl flex items-center justify-between px-4 md:px-8 z-10 shadow-lg shadow-slate-950/10">
           {/* Mobile Menu Trigger & Title */}
           <div className="flex items-center">
             <button
@@ -265,7 +282,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
         </header>
 
         {/* WORKSPACE CONTENT AREA */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#090d16]">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
           {children}
         </main>
       </div>
@@ -280,7 +297,7 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
           />
           
           {/* Drawer Menu pane */}
-          <div className="fixed top-0 bottom-0 left-0 w-72 bg-[#0b0f19] text-slate-400 border-r border-slate-900 flex flex-col z-50">
+          <div className="fixed top-0 bottom-0 left-0 w-72 bg-slate-900/95 text-slate-300 border-r border-slate-700 flex flex-col z-50 backdrop-blur-xl">
             <div className="h-16 flex items-center justify-between px-6 border-b border-slate-900/60">
               <div className="flex items-center space-x-2">
                 <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -299,9 +316,18 @@ export default function DashboardLayout({ currentView, onViewChange, children }:
             </div>
 
             <div className="p-4 border-b border-slate-900/60 bg-slate-900/30 flex items-center space-x-3">
-              <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-white uppercase text-xs shrink-0">
-                {currentUser.name.charAt(0)}
-              </div>
+              {profilePhotoUrl ? (
+                <img
+                  src={profilePhotoUrl}
+                  alt={currentUser.name}
+                  referrerPolicy="no-referrer"
+                  className="h-9 w-9 rounded-full object-cover shrink-0 ring-2 ring-slate-700"
+                />
+              ) : (
+                <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-white uppercase text-xs shrink-0">
+                  {currentUser.name.charAt(0)}
+                </div>
+              )}
               <div className="overflow-hidden">
                 <h4 className="font-bold text-xs text-slate-200 truncate">{currentUser.name}</h4>
                 <span className="text-[9px] font-mono font-bold text-slate-500 capitalize">{currentUser.role}</span>
