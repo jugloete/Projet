@@ -96,6 +96,7 @@ interface AppContextType {
   addPartnerCompanyByAdmin: (company: Omit<CompanyProfile, 'id'>) => void;
   updatePartnerCompanyByAdmin: (id: string, updates: Partial<CompanyProfile>) => void;
   deletePartnerCompanyByAdmin: (id: string) => void;
+  withdrawCurrentCompany: () => void;
   createSupervisorAccount: (input: SupervisorInput | string, email?: string, password?: string, details?: Partial<SupervisorInput>) => void;
   updateSupervisorAccount: (id: string, updates: Partial<SupervisorInput>) => void;
   addAttendanceRecord: (record: Omit<AttendanceRecord, 'id' | 'studentId' | 'studentName' | 'companyId' | 'supervisorId' | 'status' | 'createdAt'>) => void;
@@ -885,6 +886,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     loadAllData(true);
   };
 
+  const withdrawCurrentCompany = () => {
+    if (!currentUser || currentUser.role !== RoleType.COMPANY || !companyProfile) return;
+    const companyId = companyProfile.id;
+    const companyUserId = currentUser.id;
+    const supervisorIds = mockDb.getUsers()
+      .filter((user) => user.role === RoleType.SUPERVISOR && user.companyId === companyId)
+      .map((user) => user.id);
+
+    mockDb.saveCompanies(mockDb.getCompanies().filter((company) => company.id !== companyId));
+    mockDb.saveInternships(mockDb.getInternships().map((internship) =>
+      internship.companyId === companyId ? { ...internship, status: 'archived' } : internship
+    ));
+    mockDb.saveUsers(mockDb.getUsers().filter((user) => user.id !== companyUserId && !supervisorIds.includes(user.id)));
+    mockDb.saveNotifications(mockDb.getNotifications().filter((notification) =>
+      notification.userId !== companyUserId && !supervisorIds.includes(notification.userId)
+    ));
+    mockDb.addAuditLog(companyUserId, currentUser.name, 'ENTREPRISE_RETRAIT', `${companyProfile.name} s est retiree de la plateforme`);
+    setCurrentUser(null);
+    setCompanyProfile(null);
+    setStudentProfile(null);
+    localStorage.removeItem('session_user');
+    loadAllData(true);
+    showToast('Votre entreprise a ete retiree de la plateforme.', 'success');
+  };
+
   const createSupervisorAccount = (input: SupervisorInput | string, email?: string, password = 'password123', details: Partial<SupervisorInput> = {}) => {
     if (!currentUser || currentUser.role !== RoleType.COMPANY || !companyProfile) {
       showToast('Seule une entreprise peut creer un superviseur.', 'error');
@@ -1136,6 +1162,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         addPartnerCompanyByAdmin,
         updatePartnerCompanyByAdmin,
         deletePartnerCompanyByAdmin,
+        withdrawCurrentCompany,
         createSupervisorAccount,
         updateSupervisorAccount,
         assignStudentToSupervisor,
