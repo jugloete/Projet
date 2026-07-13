@@ -24,9 +24,84 @@ function sanitizeDocument(document) {
   return value;
 }
 
+function normalizeTextKey(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function isRuashiValue(value = '') {
+  return normalizeTextKey(value).includes('ruashi mining');
+}
+
+async function cleanupRuashiDuplicates() {
+  const canonicalUserId = 'user-company-2';
+  const canonicalCompanyId = 'company-profile-2';
+  const [users, companies] = await Promise.all([
+    models.users.find({}).lean(),
+    models.companies.find({}).lean()
+  ]);
+  const duplicateUserIds = users
+    .filter((user) =>
+      user.id !== canonicalUserId &&
+      ['company', 'COMPANY'].includes(user.role) &&
+      (isRuashiValue(user.name) || isRuashiValue(user.email))
+    )
+    .map((user) => user.id);
+  const duplicateCompanyIds = companies
+    .filter((company) =>
+      company.id !== canonicalCompanyId &&
+      (isRuashiValue(company.name) || isRuashiValue(company.email) || duplicateUserIds.includes(company.userId))
+    )
+    .map((company) => company.id);
+
+  if (!duplicateUserIds.length && !duplicateCompanyIds.length) return;
+
+  await Promise.all([
+    duplicateUserIds.length ? models.users.deleteMany({ id: { $in: duplicateUserIds } }) : Promise.resolve(),
+    duplicateCompanyIds.length ? models.companies.deleteMany({ id: { $in: duplicateCompanyIds } }) : Promise.resolve(),
+    duplicateCompanyIds.length
+      ? models.internships.updateMany(
+          { companyId: { $in: duplicateCompanyIds } },
+          { $set: { companyId: canonicalCompanyId, companyName: 'Ruashi Mining' } }
+        )
+      : Promise.resolve(),
+    duplicateCompanyIds.length
+      ? models.applications.updateMany(
+          { companyId: { $in: duplicateCompanyIds } },
+          { $set: { companyId: canonicalCompanyId, companyName: 'Ruashi Mining' } }
+        )
+      : Promise.resolve(),
+    duplicateCompanyIds.length
+      ? models.students.updateMany(
+          { companyId: { $in: duplicateCompanyIds } },
+          { $set: { companyId: canonicalCompanyId, companyName: 'Ruashi Mining' } }
+        )
+      : Promise.resolve(),
+    duplicateCompanyIds.length
+      ? models.archives.updateMany(
+          { companyId: { $in: duplicateCompanyIds } },
+          { $set: { companyId: canonicalCompanyId, companyName: 'Ruashi Mining' } }
+        )
+      : Promise.resolve(),
+    duplicateUserIds.length
+      ? models.notifications.updateMany(
+          { userId: { $in: duplicateUserIds } },
+          { $set: { userId: canonicalUserId } }
+        )
+      : Promise.resolve()
+  ]);
+}
+
 async function ensureSeedData() {
   const usersCount = await models.users.countDocuments();
-  if (usersCount > 0) return;
+  if (usersCount > 0) {
+    await cleanupRuashiDuplicates();
+    return;
+  }
 
   for (const name of collectionNames) {
     const payload = seedData[name] || [];
@@ -34,6 +109,7 @@ async function ensureSeedData() {
       await models[name].insertMany(payload, { ordered: false });
     }
   }
+  await cleanupRuashiDuplicates();
 }
 
 async function getSnapshot() {

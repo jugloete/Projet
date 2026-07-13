@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: internship-platform-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: https://jugloete.github.io
+      - key: MONGODB_URI
+        sync: false

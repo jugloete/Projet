@@ -681,6 +681,59 @@ function parseStored<T>(key: string, fallback: T[]): T[] {
   }
 }
 
+function normalizeTextKey(value?: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function isRuashiValue(value?: string) {
+  return normalizeTextKey(value).includes('ruashi mining');
+}
+
+function cleanupRuashiDuplicatesInStorage() {
+  const canonicalUserId = 'user-company-2';
+  const canonicalCompanyId = 'company-profile-2';
+  const users = parseStored<User>(USERS_KEY, []).map(normalizeUser);
+  const companies = parseStored<CompanyProfile>(COMPANIES_KEY, []).map(normalizeCompany);
+  const duplicateUserIds = new Set(
+    users
+      .filter((user) => user.id !== canonicalUserId && user.role === RoleType.COMPANY && (isRuashiValue(user.name) || isRuashiValue(user.email)))
+      .map((user) => user.id)
+  );
+  const duplicateCompanyIds = new Set(
+    companies
+      .filter((company) => company.id !== canonicalCompanyId && (isRuashiValue(company.name) || isRuashiValue(company.email) || duplicateUserIds.has(company.userId)))
+      .map((company) => company.id)
+  );
+
+  if (!duplicateUserIds.size && !duplicateCompanyIds.size) return;
+
+  localStorage.setItem(USERS_KEY, JSON.stringify(users.filter((user) => !duplicateUserIds.has(user.id))));
+  localStorage.setItem(COMPANIES_KEY, JSON.stringify(companies.filter((company) => !duplicateCompanyIds.has(company.id))));
+  localStorage.setItem(INTERNSHIPS_KEY, JSON.stringify(parseStored<Internship>(INTERNSHIPS_KEY, []).map((internship) =>
+    duplicateCompanyIds.has(internship.companyId) || isRuashiValue(internship.companyName)
+      ? { ...internship, companyId: canonicalCompanyId, companyName: 'Ruashi Mining' }
+      : internship
+  )));
+  localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(parseStored<Application>(APPLICATIONS_KEY, []).map((application) =>
+    duplicateCompanyIds.has(application.companyId || '') || isRuashiValue(application.companyName)
+      ? { ...application, companyId: canonicalCompanyId, companyName: 'Ruashi Mining' }
+      : application
+  )));
+  localStorage.setItem(STUDENTS_KEY, JSON.stringify(parseStored<StudentProfile>(STUDENTS_KEY, []).map((student) =>
+    duplicateCompanyIds.has(student.companyId || '') || isRuashiValue(student.companyName)
+      ? { ...student, companyId: canonicalCompanyId, companyName: 'Ruashi Mining' }
+      : student
+  )));
+  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(parseStored<Notification>(NOTIFICATIONS_KEY, []).map((notification) =>
+    duplicateUserIds.has(notification.userId) ? { ...notification, userId: canonicalUserId } : notification
+  )));
+}
+
 function normalizeUser(user: any): User {
   const role =
     user.role === 'student' ? RoleType.STUDENT :
@@ -919,6 +972,7 @@ export const mockDb = {
     localStorage.setItem(COMPANIES_KEY, JSON.stringify(parseStored<CompanyProfile>(COMPANIES_KEY, INITIAL_COMPANIES).map(normalizeCompany)));
     localStorage.setItem(STUDENTS_KEY, JSON.stringify(parseStored<StudentProfile>(STUDENTS_KEY, INITIAL_STUDENTS).map(normalizeStudent)));
     localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(parseStored<Application>(APPLICATIONS_KEY, INITIAL_APPLICATIONS).map(normalizeApplication)));
+    cleanupRuashiDuplicatesInStorage();
     archiveExpiredStudentsInStorage();
   },
 
