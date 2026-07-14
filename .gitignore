@@ -7,3 +7,5 @@ sites-deployment/
 *.log
 .env*
 !.env.example
+
+.vercel
