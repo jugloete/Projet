@@ -228,6 +228,19 @@ app.delete('/api/:collection/:id', async (req, res, next) => {
   }
 });
 
+app.delete('/api/:collection', async (req, res, next) => {
+  try {
+    const model = models[req.params.collection];
+    const id = req.query.id || req.body?.id;
+    if (!model) return res.status(404).json({ message: 'Collection introuvable.' });
+    if (!id) return res.status(400).json({ message: 'Identifiant requis.' });
+    await model.deleteOne({ id });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use((error, _req, res, _next) => {
   console.error(error);
   res.status(500).json({ message: error.message || 'Erreur interne du serveur.' });
