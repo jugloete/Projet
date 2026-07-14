@@ -273,7 +273,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     loadAllData();
     localStorage.removeItem('session_user');
 
-    apiClient.getSnapshot()
+    const refreshFromMongo = () => apiClient.getSnapshot()
       .then((snapshot) => {
         if (snapshot?.users?.length) {
           mockDb.importSnapshot(snapshot);
@@ -281,6 +281,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       .catch(() => undefined);
+
+    refreshFromMongo();
+    const refreshTimer = window.setInterval(refreshFromMongo, 15000);
+    return () => window.clearInterval(refreshTimer);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {

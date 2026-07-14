@@ -119,11 +119,13 @@ async function getSnapshot() {
   return Object.fromEntries(entries);
 }
 
-async function replaceCollection(name, rows = []) {
+async function mergeCollection(name, rows = []) {
   if (!models[name]) throw new Error(`Collection inconnue: ${name}`);
-  await models[name].deleteMany({});
-  if (Array.isArray(rows) && rows.length > 0) {
-    await models[name].insertMany(rows, { ordered: false });
+  if (Array.isArray(rows)) {
+    for (const row of rows) {
+      if (!row?.id) continue;
+      await models[name].findOneAndUpdate({ id: row.id }, row, { upsert: true, new: true });
+    }
   }
 }
 
@@ -145,7 +147,7 @@ app.put('/api/snapshot', async (req, res, next) => {
     const snapshot = req.body || {};
     for (const name of collectionNames) {
       if (Array.isArray(snapshot[name])) {
-        await replaceCollection(name, snapshot[name]);
+        await mergeCollection(name, snapshot[name]);
       }
     }
     res.json({ ok: true, savedAt: new Date().toISOString() });
