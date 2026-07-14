@@ -231,15 +231,29 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ message: error.message || 'Erreur interne du serveur.' });
 });
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(async () => {
-    await ensureSeedData();
-    app.listen(PORT, () => {
-      console.log(`API MongoDB prête sur http://localhost:${PORT}/api`);
+let databaseReadyPromise;
+
+export async function ensureDatabaseReady() {
+  if (mongoose.connection.readyState === 1) return;
+  if (!databaseReadyPromise) {
+    databaseReadyPromise = mongoose.connect(MONGODB_URI).then(async () => {
+      await ensureSeedData();
     });
-  })
-  .catch((error) => {
-    console.error('Impossible de se connecter à MongoDB:', error.message);
-    process.exit(1);
-  });
+  }
+  await databaseReadyPromise;
+}
+
+if (!process.env.VERCEL) {
+  ensureDatabaseReady()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`API MongoDB prête sur http://localhost:${PORT}/api`);
+      });
+    })
+    .catch((error) => {
+      console.error('Impossible de se connecter à MongoDB:', error.message);
+      process.exit(1);
+    });
+}
+
+export default app;
