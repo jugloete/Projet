@@ -81,7 +81,7 @@ interface AppContextType {
   createInternship: (internship: Omit<Internship, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'status' | 'createdAt'>) => void;
   updateInternship: (id: string, internship: Partial<Internship>) => void;
   validateInternship: (id: string, action: 'published' | 'rejected') => void;
-  applyToInternship: (internshipId: string, cvName: string, coverLetter: string, details?: Partial<Application>) => void;
+  applyToInternship: (internshipId: string, cvName: string, coverLetter: string, details?: Partial<Application>) => Promise<void>;
   updateApplicationStatus: (id: string, status: ApplicationStatus, notes?: string, details?: ApplicationDecisionDetails) => void;
   markNotificationAsRead: (id: string) => void;
   toggleFavoriteInternship: (id: string) => void;
@@ -330,7 +330,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setCurrentUser(user);
     loadUserProfiles(user);
     mockDb.addAuditLog(user.id, user.name, 'CONNEXION', `Connexion reussie en tant que ${role}`);
-    loadAllData(true);
+    loadAllData(false);
+    await apiClient.saveSnapshot(mockDb.exportSnapshot());
     return true;
   };
 
@@ -536,7 +537,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const validateInternship = (id: string, action: 'published' | 'rejected') => updateInternship(id, { status: action });
 
-  const applyToInternship = (internshipId: string, cvName: string, coverLetter: string, details: Partial<Application> = {}) => {
+  const applyToInternship = async (internshipId: string, cvName: string, coverLetter: string, details: Partial<Application> = {}) => {
     if (!currentUser || !studentProfile) return;
     const internship = mockDb.getInternships().find((item) => item.id === internshipId);
     if (!internship) return;
@@ -593,7 +594,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         `${studentProfile.name} a postule a "${internship.title}" chez ${internship.companyName}.`
       ));
     mockDb.addAuditLog(currentUser.id, currentUser.name, 'CANDIDATURE_ENVOI', `Candidature envoyee pour ${internship.title}`);
-    loadAllData(true);
+    loadAllData(false);
+    await apiClient.saveSnapshot(mockDb.exportSnapshot());
     showToast('Candidature envoyee.', 'success');
   };
 

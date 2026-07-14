@@ -99,7 +99,7 @@ export default function InternshipsList() {
     return matchesSearch && matchesCity && matchesStatus;
   });
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -121,7 +121,7 @@ export default function InternshipsList() {
 
     try {
       if (selectedInternship) {
-        applyToInternship(selectedInternship.id, cvName, coverLetter, { cvUrl });
+        await applyToInternship(selectedInternship.id, cvName, coverLetter, { cvUrl });
         setSuccessMsg(`Votre candidature a ete envoyee avec succes a ${selectedInternship.companyName}.`);
         setTimeout(() => {
           setApplyModalOpen(false);
